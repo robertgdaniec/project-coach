@@ -1,0 +1,69 @@
+# Environment & Secrets
+.env
+.env.*
+*.env
+!.env.example
+!*.env.example
+
+# Binaries & Large archives
+*.exe
+*.zip
+*.tar.gz
+*.7z
+
+# Python
+__pycache__/
+*.py[cod]
+*.class
+*.venv
+venv/
+ENV/
+
+# Databases & Data Lake
+*.db
+*.sqlite
+*.sqlite3
+workouts.json
+voice_inbox.md
+
+# Logs & Temporary files
+*.log
+*.tmp
+server_err.txt
+server_out.txt
+server_log.txt
+temp_*
+test_*.ogg
+*.ogg
+*.mp3
+*.wav
+
+# IDE & OS
+.vscode/
+.idea/
+Thumbs.db
+Desktop.ini
+
+# Local scratch & Private documents
+fix_*.py
+cv_*.md
+
+
+# API Credentials & Tokens
+*credentials*.json
+*token*.json
+sync/
+server/pythonw_err.txt
+
+# Agent & Internal Workspace State (Holy Trinity Kitchen)
+PROJECT_STATE.md
+PROJECT_STATE.*.md
+.agents/
+.agent/
+_agents/
+docs/_archiwum/
+
+# Local runner batch scripts
+*.bat
+server/run_ngrok.bat
+
