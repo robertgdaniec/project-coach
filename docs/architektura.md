@@ -8,21 +8,23 @@ graph TD
     SW -->|Audio / Czat Telegram| TG["Telegram Bot API"]
     TG -->|Webhook HTTP POST| Ngrok
     
-    Ngrok -->|Przekierowanie| Flask["Flask Server (port 5000)"]
+    Ngrok -->|Przekierowanie :8000| FastAPI["FastAPI + Uvicorn (Docker Container :8000)"]
     
-    Flask -->|endpoint /voice| VI["voice_inbox.md"]
-    Flask -->|endpoint /* (catch-all)| WJ["workouts.json (Data Lake)"]
-    Flask -->|endpoint /telegram-webhook| DEDUP["TelegramDeduplicator (Auto-Purge)"]
-    DEDUP -->|Unikalne audio| WSP["Lokalny Whisper (GPU large-v3)"]
+    FastAPI -->|endpoint /voice| VI["voice_inbox.md"]
+    FastAPI -->|endpoint /* (catch-all)| WJ["workouts.json (Data Lake)"]
+    FastAPI -->|endpoint /telegram-webhook| DEDUP["TelegramDeduplicator (Auto-Purge)"]
+    FastAPI -.->|OpenAPI Docs| SWAG["Swagger UI (/docs)"]
+    
+    DEDUP -->|Unikalne audio| WSP["Lokalny Faster-Whisper (NVIDIA CUDA large-v3)"]
     DEDUP -.->|Duplikat z Wear OS| DEL["Telegram API deleteMessage"]
     
-    WSP -->|Transkrybowany tekst| GKP["GeminiKeyPool (3 klucze API)"]
-    GKP -->|Failover Router| OMNI["Omni-Agent (project_coach.md)"]
+    WSP -->|Transkrybowany tekst| GKP["GeminiKeyPool (Pula 3 kluczy API)"]
+    GKP -->|0ms Failover Router| OMNI["Omni-Agent (project_coach.md)"]
     
-    WJ -->|Trigger| ETL["etl_parser.py"]
-    ETL -->|Zapis danych ustrukturyzowanych| DB[("baza_kalistenika.db (SQLite)")]
+    WJ -->|Asynchroniczny background_tasks| ETL["etl_parser.py"]
+    ETL -->|Zapis danych ustrukturyzowanych| DB[("baza_kalistenika.db (SQLite WAL)")]
     
-    subgraph "Projekt Kalistenika"
+    subgraph "Projekt Kalistenika (Host Bind Mount)"
         VI
         DB
         OMNI
@@ -64,10 +66,12 @@ Aktualne tabele zarządzane przez `etl_parser.py`:
 
 | Metoda HTTP | Endpoint | Opis |
 |---|---|---|
-| `POST` | `/telegram-webhook` | Odbiera wiadomości i notatki głosowe z Telegrama. Transkrybuje audio przez Whisper GPU, wywołuje Omni-Agenta via `GeminiKeyPool` i odsyła odpowiedź. |
-| `POST` | `/voice` | Odbiera surowe notatki głosowe z zegarka (`{"text": "..."}`). Zapisuje do `voice_inbox.md`. |
-| `POST` | `/*` (catch-all) | Odbiera webhooki z payloadem JSON (Samsung Health). Dopisywane do `workouts.json` i wywołuje trigger dla `etl_parser.process_data()`. |
-| `GET` | `/*` (catch-all) | Healthcheck. Zwraca `{"status": "ok"}`. |
+| `POST` | `/telegram-webhook` | Odbiera wiadomości i notatki głosowe z Telegrama. Transkrybuje audio przez Whisper GPU, wywołuje Omni-Agenta via `GeminiKeyPool` (asynchroniczny wskaźnik typing) i odsyła sformatowaną odpowiedź HTML. |
+| `POST` | `/voice` | Odbiera surowe notatki głosowe z zegarka (`VoiceInboxRequest`). Zapisuje do `voice_inbox.md`. |
+| `POST` | `/*` (catch-all) | Odbiera webhooki z payloadem JSON (Samsung Health). Zapisuje atomowo do `workouts.json` i asynchronicznie odpala `etl_parser.process_data()`. |
+| `GET` | `/` | Publiczny healthcheck. Zwraca `{"status": "ok", "server": "FastAPI", "version": "2.0.0"}`. |
+| `GET` | `/health` | Zaawansowany healthcheck SRE: stan bazy SQLite WAL, status puli kluczy Gemini API i stan akceleracji CUDA Faster-Whisper. |
+| `GET` | `/docs` | Interaktywna dokumentacja Swagger UI (OpenAPI 3.1.0). |
 
 ## 4. Konfiguracja Stref Tętna (Heart Rate Zones)
 
@@ -84,23 +88,24 @@ Aktualne tabele zarządzane przez `etl_parser.py`:
 
 ```mermaid
 graph LR
-    subgraph "Project Coach (Źródło)"
-        Srv["server.py"]
+    subgraph "Project Coach (Kontener Docker / Port 8000)"
+        Srv["server_fastapi.py"]
         ETL["etl_parser.py"]
+        DC["docker-compose.yml (Profile CPU/GPU)"]
     end
     
-    subgraph "kalistenika (Cel)"
+    subgraph "kalistenika (Host Bind Mount /kalistenika)"
         VI["voice_inbox.md"]
         WJ["workouts.json"]
-        DB[("baza_kalistenika.db")]
+        DB[("baza_kalistenika.db (WAL)")]
         Log["server_log.txt"]
         R_Diet["Reguła Dietetyk"]
         R_Tren["Reguła Trener"]
     end
     
     Srv -->|Zapis POST /voice| VI
-    Srv -->|Zapis POST /*| WJ
-    Srv -->|Logowanie HTTP| Log
+    Srv -->|Atomowy zapis POST /*| WJ
+    Srv -->|Logowanie HTTP & SRE| Log
     
     ETL -->|Odczyt| WJ
     ETL -->|Zapis (INSERT/UPDATE)| DB
@@ -113,9 +118,9 @@ graph LR
 ## 6. Procesy w tle i Autostart
 
 *   **`start_serwera.vbs`** znajduje się w folderze Autostart systemu Windows.
-*   Skrypt VBS tworzy `WScript.Shell` i uruchamia `python server.py` z ukrytym oknem (parametr `0, False`).
-*   **Hacking konsoli:** `server.py` wewnętrznie wykorzystuje *monkeypatching* na `subprocess.Popen`, wstrzykując flagę `STARTF_USESHOWWINDOW`. Zapobiega to pojawieniu się okna konsoli podczas uruchamiania procesu `ngrok.exe`.
-*   **Ngrok:** Uruchamiany programowo poprzez bibliotekę pyngrok: `pyngrok.ngrok.connect(5000, domain=...)`.
+*   Skrypt VBS tworzy `WScript.Shell` i uruchamia `python server_fastapi.py` z ukrytym oknem (parametr `0, False`).
+*   **Hacking konsoli:** `server_fastapi.py` wewnętrznie wykorzystuje klasę `PatchedPopen` dziedziczącą po `subprocess.Popen`, wstrzykując flagę `CREATE_NO_WINDOW`. Zapewnia to bezokienkowe działanie procesów pomocniczych oraz pełną zgodność z generycznym typowaniem `Popen[bytes]` w Pythonie 3.13.
+*   **Ngrok & SRE Watchdog:** Tunel podnoszony programowo na porcie 8000 z automatycznym wątkiem monitorującym `start_watchdog` (auto-reconnect co 60s i audyt kolejki Telegrama co 5 min).
 
 ## 7. Środowisko Hosta i Zarządzanie Energią (Power Management SRE)
 
