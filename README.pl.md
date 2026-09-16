@@ -1,5 +1,10 @@
 # 🦾 Personal AI Fitness & Nutrition Coach
 
+[![FastAPI](https://img.shields.io/badge/FastAPI-2.0.0-009688.svg?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
+[![Python 3.13](https://img.shields.io/badge/Python-3.13-3776AB.svg?logo=python&logoColor=white)](https://www.python.org/)
+[![Docker](https://img.shields.io/badge/Docker-Dual--Profile-2496ED.svg?logo=docker&logoColor=white)](https://www.docker.com/)
+[![Testy](https://img.shields.io/badge/Testy-23%20Zaliczonych-success.svg)](#)
+
 > 🌐 [English](README.md) · **Polski**
 
 **Inteligentny asystent, który łączy dane z Health Connect, notatki głosowe i agentów AI. Zastępuje ręczne wpisywanie posiłków i treningów automatyczną analizą oraz natychmiastową odpowiedzią.**
@@ -106,6 +111,33 @@ Integracja z aplikacją Telegram zapewnia w pełni mobilną obsługę. Użytkown
   <img src="showcase/telegram_bot.jpg" width="360" alt="Telegram Bot Interface" />
 </div>
 <p align="center"><i>Odpowiedź oparta na faktach: agent przetwarza 17-sekundową notatkę głosową, porównuje składniki z wczorajszym wpisem i na bieżąco aktualizuje bilans makro pod zaplanowaną jednostkę (TRAINING DAY — PULL).</i></p>
+
+---
+
+### 🛠️ Stos Technologiczny i Wdrożenie
+
+* **Rdzeń Backendowy:** Asynchroniczny framework FastAPI (ASGI), modele walidacyjne Pydantic v2 oraz produkcyjny runner Uvicorn.
+* **Interaktywna Dokumentacja API:** Automatycznie generowane, żywe środowisko Swagger UI pod adresem `http://localhost:8000/docs`.
+* **Konteneryzacja Docker:** Wielostopniowy obraz (`python:3.13-slim-bookworm`) z profilami w Docker Compose:
+  * **Profil CPU (`--profile cpu`):** Ultralekki kontener (~350 MB) do obsługi webhooków telemetrycznych i chmurowych zapytań do Gemini API.
+  * **Profil GPU (`--profile gpu`):** Akcelerowany kontener (~1.9 GB) z passthrough NVIDIA Container Toolkit dla lokalnego modelu Faster-Whisper (`large-v3`, CUDA float16).
+* **Bezpieczeństwo Danych:** Relacyjna baza SQLite w trybie WAL z bezpiecznym montowaniem całego katalogu i gwarancją reguły Single-Writer.
+* **Bramka Jakości:** Zestaw 23 testów jednostkowych i integracyjnych (czas wykonania: <0.2s) z pełną izolacją mockową.
+
+```bash
+# Sklonowanie repozytorium
+git clone https://github.com/robertgdaniec/project-coach.git
+cd project-coach
+
+# Utworzenie pliku środowiskowego
+cp .env.example .env
+
+# Uruchomienie w profilu CPU (chmura / maszyny bez GPU)
+docker compose --profile cpu up -d
+
+# Uruchomienie w profilu GPU (z akceleracją CUDA na kartach RTX)
+docker compose --profile gpu up -d
+```
 
 ---
 

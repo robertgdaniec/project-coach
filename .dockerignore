@@ -1,0 +1,41 @@
+# Git & VCS
+.git/
+.gitignore
+.gitattributes
+
+# Środowiska wirtualne & cache Pythona
+venv/
+.venv/
+sync/venv/
+**/__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Sekrety i konfiguracja lokalna hosta
+.env
+.env.*
+!.env.example
+
+# Logi i pliki tymczasowe
+*.log
+server/*.log
+crash.log
+pythonw_err.txt
+*.tmp
+server/temp_audio*.ogg
+server/test_audio.ogg
+
+# Pliki wykonywalne i skrypty specyficzne dla Windowsa
+server/bin/*.exe
+server/*.exe
+server/*.zip
+server/*.vbs
+server/*.bat
+
+# Zasoby dokumentacji i grafiki
+docs/_archiwum/
+showcase/
+*.png
+*.jpg
+*.gif

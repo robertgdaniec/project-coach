@@ -6,6 +6,16 @@ Format oparty jest o [Keep a Changelog](https://keepachangelog.com/pl/1.0.0/), a
 
 ---
 
+## [2.4.0] - 2026-09-16
+### Dodano
+- **Konteneryzacja Docker w architekturze dwuprofilowej (ADR-025):** Wdrożono wielostopniowy `Dockerfile` (`python:3.13-slim-bookworm`) oraz profile w `docker-compose.yml`:
+  - `cpu`: Lekki kontener (~350 MB) pod standardowe webhooki i zapytania do chmurowych modeli Gemini.
+  - `gpu`: Akcelerowany kontener (~1.9 GB) z passthrough NVIDIA Container Toolkit dla lokalnego modelu Faster-Whisper (`large-v3`, CUDA float16).
+- **Bezpieczne montowanie wolumenów dla SQLite WAL:** Host Bind Mount całego katalogu (`../kalistenika:/kalistenika`) zapewniający atomowość operacji VFS (`.db-wal`, `.db-shm`) i ochronę surowego Data Lake (`workouts.json.tmp` -> `os.replace`) przy regule Single-Writer.
+- **Parametryzacja środowiskowa:** Obsługa zmiennych `KALISTENIKA_DIR` oraz `WHISPER_DEVICE` ze 100% kompatybilnością wsteczną dla natywnego środowiska Windows.
+
+---
+
 ## [2.3.0] - 2026-09-16
 ### Dodano
 - **Asynchroniczny silnik FastAPI & Uvicorn (ADR-022, ADR-023):** Migracja backendu produkcyjnego ze starszego Flaska do asynchronicznego FastAPI + Pydantic v2 na porcie 8000. Wdrożono ścisłą walidację modeli, interaktywny Swagger UI pod `/docs` oraz samonaprawiającego się watchdoga SRE z natychmiastowym rollbackiem (<5s).

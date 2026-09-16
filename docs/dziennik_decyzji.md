@@ -275,6 +275,26 @@ Przełączenie ruchu definitywnie zamyka Fazę 1 Roadmapy Ewolucji. Nowy stos te
 **Uzasadnienie:**
 Utrzymuje architekturę separacji adaptera — model AI w rdzeniu emituje standardowy, bogaty GitHub Flavored Markdown zgodny z zasadami Gestalt, a warstwa backendu w Project Coach bezstratnie redukuje go do ograniczeń komunikatora mobilnego.
 
+## ADR-025: Architektura Konteneryzacji Docker i Orkiestracja Dwuprofilowa
+ 
+**Kontekst:** Po pomyślnym wdrożeniu asynchronicznego serwera FastAPI (ADR-022, ADR-023), serwer działał bezpośrednio na procesach hosta Windows (`pythonw.exe`). Zgodnie z Roadmapą Ewolucji (ADR-021), wymagana była hermetyzacja środowiska uruchomieniowego, deterministyczne odtwarzanie zależności C/CUDA oraz architektura pozwalająca na elastyczny start:
+1. Lekki kontener CPU pod standardowe webhooki Telegrama, Samsung Health i chmurowe API Gemini (dla maszyn bez karty graficznej, VPS-ów i chmury).
+2. Akcelerowany kontener GPU z passthrough NVIDIA Container Toolkit dla lokalnego modelu Faster-Whisper (`large-v3`, CUDA float16).
+3. Bezpieczne montowanie bazy relacyjnej SQLite w trybie WAL (`baza_kalistenika.db`), surowego Data Lake (`workouts.json`) oraz bufora notatek (`voice_inbox.md`).
+
+**Decyzja:**
+1. **Wielostopniowy Dockerfile (Multi-Stage Build):** Zaimplementowano jeden produkcyjny `Dockerfile` oparty o `python:3.13-slim-bookworm` (Debian 12 Bookworm, glibc 2.36) z narzędziami `ffmpeg`, `curl` i `libsqlite3-0`. Zdefiniowano dwa targety:
+   - `runner-cpu`: instaluje wyłącznie bazowe zależności HTTP/API (`requirements-base.txt`), tworząc lekki kontener (~350 MB).
+   - `runner-gpu`: instaluje dodatkowo silnik `ctranslate2`, `faster-whisper` oraz pakiety pip `nvidia-cublas-cu12` i `nvidia-cudnn-cu12` (`requirements-gpu.txt`) z dynamicznym dowiązaniem do `LD_LIBRARY_PATH`. Pozwala to uzyskać pełną akcelerację CUDA przy rozmiarze ~1.9 GB zamiast 7 GB ciężkich obrazów CUDA SDK.
+2. **Orkiestracja Dwuprofilowa (Docker Compose Profiles):** Utworzono `docker-compose.yml` ze specyfikacją profili `cpu` oraz `gpu`. Uruchomienie odbywa się deterministycznie przez flagę `--profile`:
+   - `docker compose --profile cpu up -d`
+   - `docker compose --profile gpu up -d` (z deklaracją `deploy.resources.reservations.devices: driver: nvidia`).
+3. **Bezpieczny Bind Mount SQLite WAL i Zasada Single-Writer:** Zastosowano montowanie całego katalogu `../kalistenika:/kalistenika`. Zapobiega to antywzorcowi montowania pojedynczego pliku `.db` (który uniemożliwia poprawną alokację plików `-wal` i `-shm`), zapewnia atomowość zapisu `workouts.json.tmp` -> `os.replace` w tym samym punkcie montowania VFS oraz gwarantuje natychmiastową widoczność bazy dla narzędzi hosta pod warunkiem zasady *Single-Writer* (wyłączny zapis z kontenera, bezpieczny odczyt z hosta).
+4. **Parametryzacja Środowiska w Kodzie:** Wprowadzono dynamiczny odczyt `KALISTENIKA_DIR` oraz `WHISPER_DEVICE` w `server/server_fastapi.py` oraz `server/etl_parser.py`, zachowując 100% kompatybilności wstecznej z natywnym runnerem Windows `start_serwera.vbs`.
+5. **Separacja Kontekstu:** Utworzono `.dockerignore` chroniący kontekst budowania przed wyciekiem sekretów (`.env`), plików binarnych Windows (`*.exe`), logów i śmieci cache.
+
+**Uzasadnienie:**
+Architektura łączy najwyższy standard hermetyzacji aplikacji (12-Factor App) z elastycznością sprzętową (ten sam kod działa na CPU w chmurze i na GPU RTX lokalnie) oraz chroni integralność bazy SQLite i buforów Data Lake przed uszkodzeniem.
 
 
 

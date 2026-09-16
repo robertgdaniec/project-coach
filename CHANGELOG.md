@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
+## [2.4.0] - 2026-09-16
+### Added
+- **Docker Dual-Profile Containerization (ADR-025):** Implemented multi-stage Docker build (`python:3.13-slim-bookworm`) and Docker Compose profiles:
+  - `cpu`: Lightweight container (~350 MB) for standard webhooks and cloud Gemini LLM inference.
+  - `gpu`: Hardware-accelerated container (~1.9 GB) leveraging NVIDIA Container Toolkit passthrough for local Faster-Whisper (`large-v3`, CUDA float16) speech transcription.
+- **SQLite WAL Volume Mount Security:** Host Bind Mount (`../kalistenika:/kalistenika`) ensuring atomic shared memory transactions (`.db-wal`, `.db-shm`) and Data Lake consistency (`workouts.json.tmp` -> `os.replace`) under the Single-Writer pattern.
+- **Dynamic Environment Parameterization:** Parameterized `KALISTENIKA_DIR` and `WHISPER_DEVICE` with 100% backward compatibility for host Windows execution.
+
+---
+
 ## [2.3.0] - 2026-09-16
 ### Added
 - **Asynchronous FastAPI & Uvicorn Engine (ADR-022, ADR-023):** Upgraded production backend from synchronous Flask to high-throughput asynchronous FastAPI + Pydantic v2 running on port 8000. Features strict request payload validation, interactive Swagger UI (`/docs`), and SRE process management with instant rollback capability (<5s).

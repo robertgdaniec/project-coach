@@ -1,5 +1,10 @@
 # 🦾 Personal AI Fitness & Nutrition Coach
 
+[![FastAPI](https://img.shields.io/badge/FastAPI-2.0.0-009688.svg?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
+[![Python 3.13](https://img.shields.io/badge/Python-3.13-3776AB.svg?logo=python&logoColor=white)](https://www.python.org/)
+[![Docker](https://img.shields.io/badge/Docker-Dual--Profile-2496ED.svg?logo=docker&logoColor=white)](https://www.docker.com/)
+[![Tests](https://img.shields.io/badge/Tests-23%20Passed-success.svg)](#)
+
 > 🌐 **English** · [Polski](README.pl.md)
 
 **An intelligent assistant combining smartwatch telemetry, voice notes, and AI agents. Replaces manual food logging and workout tracking with automated analysis and real-time feedback.**
@@ -106,6 +111,33 @@ Full integration with Telegram enables completely mobile, hands-free operation. 
   <img src="showcase/telegram_bot.jpg" width="360" alt="Telegram Bot Interface" />
 </div>
 <p align="center"><i>Fact-based response: the agent transcribes a 17-second voice note, compares ingredients against yesterday's log, and updates the daily macro budget for the upcoming session (TRAINING DAY — PULL) in real time.</i></p>
+
+---
+
+### 🛠️ Technology Stack & Deployment
+
+* **Core Backend:** Asynchronous FastAPI (ASGI), Pydantic v2 validation models, and Uvicorn production runner.
+* **Interactive API Documentation:** Interactive Swagger UI accessible live at `http://localhost:8000/docs`.
+* **Containerization:** Multi-stage Docker build (`python:3.13-slim-bookworm`) with Docker Compose profiles:
+  * **CPU Profile (`--profile cpu`):** Ultra-lightweight container (~350 MB) for standard telemetry webhooks and cloud Gemini LLM routing.
+  * **GPU Profile (`--profile gpu`):** Hardware-accelerated container (~1.9 GB) leveraging NVIDIA Container Toolkit passthrough for local Faster-Whisper (`large-v3`, CUDA float16).
+* **Data Storage & Integrity:** Relational SQLite configured in WAL mode with Host Bind Mounts and single-writer safety guarantees.
+* **Automated Quality Gate:** 23 unit and integration tests executing in <0.2s with full mock isolation.
+
+```bash
+# Clone repository
+git clone https://github.com/robertgdaniec/project-coach.git
+cd project-coach
+
+# Copy environment template
+cp .env.example .env
+
+# Run via Docker (CPU Profile)
+docker compose --profile cpu up -d
+
+# Run via Docker (GPU Profile with NVIDIA CUDA passthrough)
+docker compose --profile gpu up -d
+```
 
 ---
 

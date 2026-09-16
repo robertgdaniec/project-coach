@@ -1,0 +1,71 @@
+# ==============================================================================
+# Docker Compose: Project Coach (FastAPI + Uvicorn)
+# Architektura dwuprofilowa:
+#   - Uruchomienie CPU: docker compose --profile cpu up -d
+#   - Uruchomienie GPU: docker compose --profile gpu up -d
+# ==============================================================================
+
+services:
+  # ----------------------------------------------------------------------------
+  # Profil 1: Lekki serwer CPU pod webhooki Telegrama, Samsung Health i API Gemini
+  # ----------------------------------------------------------------------------
+  project-coach-cpu:
+    container_name: project-coach-cpu
+    image: project-coach:cpu-3.13
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runner-cpu
+    profiles:
+      - cpu
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      - FASTAPI_HOST=0.0.0.0
+      - FASTAPI_PORT=8000
+      - KALISTENIKA_DIR=/kalistenika
+      - WHISPER_DEVICE=cpu
+    ports:
+      - "8000:8000"
+    volumes:
+      # Bezpieczny Bind Mount całego katalogu kalistenika:
+      # Zapewnia współdzielenie bazy SQLite w trybie WAL (.db, .db-wal, .db-shm),
+      # surowego Data Lake (workouts.json) oraz bufora voice_inbox.md.
+      - ../kalistenika:/kalistenika
+
+  # ----------------------------------------------------------------------------
+  # Profil 2: Serwer akcelerowany GPU z NVIDIA Container Toolkit (Faster-Whisper CUDA)
+  # ----------------------------------------------------------------------------
+  project-coach-gpu:
+    container_name: project-coach-gpu
+    image: project-coach:gpu-3.13
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runner-gpu
+    profiles:
+      - gpu
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      - FASTAPI_HOST=0.0.0.0
+      - FASTAPI_PORT=8000
+      - KALISTENIKA_DIR=/kalistenika
+      - WHISPER_DEVICE=cuda
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    ports:
+      - "8000:8000"
+    volumes:
+      - ../kalistenika:/kalistenika
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
