@@ -197,4 +197,15 @@ Podejście jest w 100% zgodne ze światowym standardem open-source (topowe repoz
 **Uzasadnienie:**
 Wdrożenie łączy wzorcowy UX komunikatora mobilnego (natychmiastowy feedback "pisze...") z odpornością infrastruktury typu Self-Healing (automatyczne wznawianie tunelu bez konieczności restartu hosta) i czystością generowanego tekstu.
 
+## ADR-020: Pre-Push Sanity Gate — Precyzyjna detekcja wycieków bez fałszywych alarmów
+
+**Kontekst:** Automatyczny strażnik `.git/hooks/pre-push` blokował operację `git push`, zgłaszając fałszywe alarmy (False Positives). Wzorzec `\.ngrok-free\.dev` oraz `Users` dopasowywał się do prawidłowych szablonów architektonicznych (`https://[tunnel-id].ngrok-free.dev` w `README.md`, `your-static-subdomain.ngrok-free.dev` w `.env.example`) oraz syntetycznych danych testowych (`c:/Users/TESTUSER/` w `test_server.py` testującym mechanizm sanityzacji).
+
+**Decyzja:**
+1. Zoptymalizowano skrypt `.git/hooks/pre-push`, dodając potok wykluczający autoryzowane wzorce placeholderów (`[tunnel-id]`, `your-static-subdomain`) oraz atrapy testowe (`TESTUSER`).
+2. Wprowadzono jawne raportowanie wykrytych linii do konsoli w razie detekcji rzeczywistego wycieku, co eliminuje konieczność zgadywania przyczyny odrzucenia pusha.
+
+**Uzasadnienie:**
+Ochrona danych prywatnych musi być deterministyczna i precyzyjna. Rozwiązanie odróżnia rzeczywiste sekrety i aktywne domeny od generycznych szablonów wymaganych przez standard open-source.
+
 
