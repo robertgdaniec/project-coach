@@ -7,7 +7,11 @@ from zoneinfo import ZoneInfo
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent
-WORKSPACE_DIR = BASE_DIR.parent.parent / "kalistenika"
+kalistenika_env = os.environ.get("KALISTENIKA_DIR")
+if kalistenika_env:
+    WORKSPACE_DIR = Path(kalistenika_env).resolve()
+else:
+    WORKSPACE_DIR = BASE_DIR.parent.parent / "kalistenika"
 INPUT_FILE = WORKSPACE_DIR / "workouts.json"
 DB_FILE = WORKSPACE_DIR / "baza_kalistenika.db"
 
@@ -144,7 +148,12 @@ def process_data():
             except:
                 pass
                 
-        for cal in payload.get("total_calories", []):
+        # Defensywne mapowanie kalorii: priorytet dla 'active_calories', fallback do 'total_calories' (ADR-012/ADR-022)
+        cals_list = payload.get("active_calories", [])
+        if not cals_list or not any(c.get("calories", 0) > 0 for c in cals_list):
+            cals_list = payload.get("total_calories", [])
+
+        for cal in cals_list:
             try:
                 st = dateutil.parser.isoparse(cal["start_time"]).astimezone(ZoneInfo("Europe/Warsaw"))
                 date_str = st.strftime("%Y-%m-%d")

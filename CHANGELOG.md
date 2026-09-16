@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
+## [2.3.0] - 2026-09-16
+### Added
+- **Asynchronous FastAPI & Uvicorn Engine (ADR-022, ADR-023):** Upgraded production backend from synchronous Flask to high-throughput asynchronous FastAPI + Pydantic v2 running on port 8000. Features strict request payload validation, interactive Swagger UI (`/docs`), and SRE process management with instant rollback capability (<5s).
+- **Telegram Mobile Sanitizer & GitHub Alert Mapping (ADR-024):** Enhanced message formatting pipeline to automatically translate GitHub Flavored Markdown alerts (`> [!NOTE]`, `> [!TIP]`, `> [!WARNING]`) into mobile indicators and strip blockquote markers for clean Telegram rendering.
+- **Comprehensive Unit Test Suite:** Expanded test suite to 23 automated unit and integration tests (`test_server_fastapi.py` and `test_server.py`) passing in <0.2s with full mock isolation.
+
+### Fixed
+- **Process Spawning Typing Compatibility:** Fixed generic typing support (`Popen[bytes]`) on Python 3.13 by replacing function monkeypatch with inheriting `PatchedPopen` class for headless background execution.
+
+---
+
 ## [2.2.0] - 2026-09-16
 ### Added
 - **SRE Self-Healing Watchdog (ADR-019):** Background monitoring thread auto-recovering the Ngrok tunnel every 60s upon network drops, and auditing Telegram webhook health (`getWebhookInfo`) every 5 minutes to flush stalled queues.

@@ -399,6 +399,12 @@ def format_telegram_message(raw_text: str) -> str:
     # 2. Usuniecie poziomych kresek markdown (---, ***)
     text = re.sub(r'^\s*[-*_]{3,}\s*$', '', text, flags=re.MULTILINE)
     
+    # 2b. Zamiana GitHub alerts (> [!NOTE], > [!TIP] etc.) oraz cytowań markdown na czytelne prefiksy
+    text = re.sub(r'^[ \t]*>[ \t]*\[!(NOTE|INFO)\][ \t]*\n?', '💡\n', text, flags=re.MULTILINE | re.IGNORECASE)
+    text = re.sub(r'^[ \t]*>[ \t]*\[!TIP\][ \t]*\n?', '🎯\n', text, flags=re.MULTILINE | re.IGNORECASE)
+    text = re.sub(r'^[ \t]*>[ \t]*\[!(IMPORTANT|WARNING|CAUTION)\][ \t]*\n?', '⚠️\n', text, flags=re.MULTILINE | re.IGNORECASE)
+    text = re.sub(r'^[ \t]*>[ \t]*', '', text, flags=re.MULTILINE)
+    
     # 3. Konwersja tabel Markdown na pionowe karty mobilne
     text = convert_markdown_tables(text)
     
@@ -433,6 +439,10 @@ def clean_plain_text(raw_text: str) -> str:
     text = re.sub(r'\(\s*\)', '', text)
     text = re.sub(r'\s+([,\.\?!])', r'\1', text)
     text = re.sub(r'^\s*[-*_]{3,}\s*$', '', text, flags=re.MULTILINE)
+    text = re.sub(r'^[ \t]*>[ \t]*\[!(NOTE|INFO)\][ \t]*\n?', '💡\n', text, flags=re.MULTILINE | re.IGNORECASE)
+    text = re.sub(r'^[ \t]*>[ \t]*\[!TIP\][ \t]*\n?', '🎯\n', text, flags=re.MULTILINE | re.IGNORECASE)
+    text = re.sub(r'^[ \t]*>[ \t]*\[!(IMPORTANT|WARNING|CAUTION)\][ \t]*\n?', '⚠️\n', text, flags=re.MULTILINE | re.IGNORECASE)
+    text = re.sub(r'^[ \t]*>[ \t]*', '', text, flags=re.MULTILINE)
     text = convert_markdown_tables(text)
     text = re.sub(r'^\s*#{1,6}\s*(.+)$', r'\n\1\n', text, flags=re.MULTILINE)
     text = text.replace('**', '').replace('__', '').replace(r'\|', '')

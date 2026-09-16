@@ -6,6 +6,17 @@ Format oparty jest o [Keep a Changelog](https://keepachangelog.com/pl/1.0.0/), a
 
 ---
 
+## [2.3.0] - 2026-09-16
+### Dodano
+- **Asynchroniczny silnik FastAPI & Uvicorn (ADR-022, ADR-023):** Migracja backendu produkcyjnego ze starszego Flaska do asynchronicznego FastAPI + Pydantic v2 na porcie 8000. Wdrożono ścisłą walidację modeli, interaktywny Swagger UI pod `/docs` oraz samonaprawiającego się watchdoga SRE z natychmiastowym rollbackiem (<5s).
+- **Sanityzacja formatowania Telegram i mapowanie alertów GitHub (ADR-024):** Wzbogacenie formatera wiadomości o automatyczną translację alertów Markdown (`> [!NOTE]`, `> [!TIP]`, `> [!WARNING]`) na natywne oznaczenia mobilne oraz usuwanie znaczników cytowania.
+- **Rozbudowany pakiet testów jednostkowych:** Rozszerzenie zestawu testów do 23 testów (`test_server_fastapi.py` i `test_server.py`) wykonujących się w 0.17s z pełną izolacją mockową.
+
+### Naprawiono
+- **Zgodność typowania uruchamiania procesów:** Usunięto błąd generycznego typowania `Popen[bytes]` na Pythonie 3.13 poprzez zastąpienie funkcyjnego monkeypatcha dedykowaną klasą `PatchedPopen` dla cichego uruchamiania procesów w tle.
+
+---
+
 ## [2.2.0] - 2026-09-16
 ### Dodano
 - **Wątek samonaprawczy SRE Watchdog (ADR-019):** Monitorujący wątek w tle sprawdzający aktywność tunelu Ngrok co 60s (automatyczny auto-heal przy zerwaniu połączenia Wi-Fi) oraz audytujący stan webhooka Telegrama (`getWebhookInfo`) co 5 minut w celu uwalniania zatorów kolejki.

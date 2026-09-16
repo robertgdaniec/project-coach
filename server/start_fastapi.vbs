@@ -2,5 +2,5 @@ Set fso = CreateObject("Scripting.FileSystemObject")
 strScriptPath = fso.GetParentFolderName(WScript.ScriptFullName)
 Set WshShell = CreateObject("WScript.Shell")
 WshShell.CurrentDirectory = strScriptPath
-' Uruchamia asynchroniczny serwer FastAPI (Uvicorn) w tle, całkowicie ukrywając czarne okno konsoli (parametr 0)
+' Uruchamia serwer FastAPI (Uvicorn) w tle, ukrywajac czarne okno konsoli (parametr 0)
 WshShell.Run "pythonw """ & strScriptPath & "\server_fastapi.py""", 0, False

@@ -94,6 +94,12 @@ Ten dokument opisuje kluczowe decyzje architektoniczne w projekcie "Project Coac
 **Odrzucone alternatywy:** Próba zmiany aplikacji webhookowej na telefonie, poszukiwanie wtyczek do Taskera odczytujących zablokowane api Samsung Health, wymuszanie ręcznego podawania kalorii przez użytkownika.
 **Uzasadnienie:** Architekturę omijamy po stronie backendu, na warstwie analitycznej Agenta. Jest to bezinwazyjne rozwiązanie (tzw. Graceful Degradation), które zapewnia 100% precyzję wydatku energetycznego bez ruszania awaryjnego ekosystemu Androida.
 
+**Aneks (Empiryczna weryfikacja błędu kategoryzacji i Defensywne Mapowanie w ETL):**
+W toku weryfikacji dashboardu aplikacji webhookowej ujawniono twardy dowód błędu integracji po stronie Samsung Health (Semantic Misrouting):
+1. Aplikacja webhookowa prezentuje dwa odrębne kafelki: Active Calories (0 kcal) oraz Total Calories (180 kcal przy 1.98 km marszu).
+2. Potwierdza to, że Samsung Health ignoruje standardowy rekord ActiveCaloriesBurnedRecord w Health Connect i zamiast tego zapisuje kalorie z czystego ruchu wyłącznie pod typ TotalCaloriesBurnedRecord (bez doliczenia metabolicznego BMR).
+3. Wdrożono defensywne mapowanie w server/etl_parser.py: parser daje priorytet polu active_calories (na wypadek przyszłej poprawki Samsunga), zachowując fallback do total_calories. Zapewniono pełne pokrycie testami jednostkowymi (test_etl_defensive_calories_mapping).
+
 ## ADR-013: GeminiKeyPool i Failover Router w potoku Telegrama
 
 **Kontekst:** W środowisku produkcyjnym darmowe konto Google AI Studio nakłada drastyczne lejki quota (HTTP 429) na pojedyncze projekty (np. 20 req/day dla gemini-3.5-flash). Poprzednia implementacja reply_with_agent wykonywała 5 ślepych prób z rosnącym opóźnieniem na tym samym wyczerpanym kluczu, zamrażając wątek bota na ponad 2 minuty i bezpowrotnie marnując zapytania.
@@ -207,5 +213,73 @@ Wdrożenie łączy wzorcowy UX komunikatora mobilnego (natychmiastowy feedback "
 
 **Uzasadnienie:**
 Ochrona danych prywatnych musi być deterministyczna i precyzyjna. Rozwiązanie odróżnia rzeczywiste sekrety i aktywne domeny od generycznych szablonów wymaganych przez standard open-source.
+
+## ADR-021: Strategia Profesjonalizacji Architektury i Standard 4 Filarów (FastAPI, Docker & Cloudflare Roadmap)
+
+**Kontekst:** Szczegółowy audyt inżynierski wykazał, że obecny serwer Flask (`server.py`) oraz tunel Ngrok, mimo zaawansowanych mechanizmów idempotencji (ADR-014) i failoveru puli kluczy (ADR-013), posiadają ograniczenia technologiczne wynikające ze starszej architektury synchronicznej (WSGI) i środowiska Windows. W celu przygotowania systemu pod standardy komercyjne oraz systematycznego rozwoju inżynierskiego, wymagana była strategia bezinwazyjnej modernizacji bez ryzyka utraty stabilności obecnego potoku. Ponadto brakowało ustrukturyzowanej bazy wiedzy i ścisłych warunków brzegowych doboru narzędzi.
+
+**Decyzja:**
+1. Zatwierdzono oficjalną 5-fazową Roadmapę Ewolucji:
+   * **Faza 1:** Refaktoryzacja backendu do asynchronicznego FastAPI + Pydantic + Uvicorn (wdrażana w osobnym pliku `server_fastapi.py`).
+   * **Faza 2:** Konteneryzacja i izolacja środowiska (Docker & Docker Compose z profilami GPU i CPU/API).
+   * **Faza 3:** Bezpieczne tunelowanie sieciowe via Cloudflare Tunnels (`cloudflared`).
+   * **Faza 4:** Architektura hybrydowa z orkiestracją n8n (no-code dyrygent + customowy silnik FastAPI).
+   * **Faza 5:** Obserwowalność produkcyjna (SRE, diagnostyka podzespołów, heartbeat alerting).
+2. Wdrożono w `~/.gemini/config/KATALOG_NARZEDZI.md` Standard 4 Filarów (Rola, Kiedy używać, Kiedy NIE używać, Kompromis/Trade-off), eliminujący przypadkowy dobór przestarzałych technologii przez modele LLM, oraz dodano wpisy `fastapi-toolkit` i `cloudflare-tunnel-toolkit`.
+3. Utworzono `~/.gemini/config/LEKSYKON_ARCHITEKTA.md` jako zewnętrzną pamięć inżynierską (Second Brain) z mikro-kartami pojęć (`.env`, `Idempotencja`, `FastAPI vs Flask`, `SQLite WAL`, `Bramka Jakości`), redukującą przeciążenie poznawcze w codziennej pracy.
+
+**Uzasadnienie:**
+Architektura równoległa gwarantuje 100% ciągłości operacyjnej obecnego ekosystemu (treningi i dieta działają nieprzerwanie na `server.py`), podczas gdy nowy stos technologiczny powstaje w sposób kontrolowany, modularny i zgodny z regułami gotowości produkcyjnej.
+
+## ADR-022: Implementacja Asynchronicznego Serwera FastAPI i Architektura Równoległa Uvicorn (Faza 1)
+
+**Kontekst:** Zgodnie z Faza 1 Roadmapy Ewolucji (ADR-021), wdrożono asynchroniczny serwer backendowy zastępujący model synchroniczny Flaska. Wymagane było zachowanie 100% ciągłości operacyjnej (Zero Downtime) dla działającego na porcie 5000 serwera Flask odbierającego ruch z zegarka Samsung i Telegrama przez tunel Ngrok.
+
+**Decyzja:**
+1. Zaimplementowano asynchroniczny serwer `server/server_fastapi.py` na porcie 8000 (zarządzanym przez Uvicorn), działający w architekturze równoległej do serwera Flask (port 5000).
+2. Zdefiniowano ścisłe modele walidacyjne Pydantic v2 dla wszystkich punktów styku: `TelegramWebhookUpdate`, `TelegramMessage`, `VoiceInboxRequest` oraz `SamsungHealthPayload` z zachowaniem `ConfigDict(extra="allow")` (zasada Postela: odporność na zmiany schematów zewnętrznych API).
+3. Zintegrowano asynchroniczną wersję `TelegramDeduplicator` (okno TTL, blokady per-chat i auto-purge przez Telegram API `deleteMessage`), asynchroniczny wskaźnik UX `TelegramTypingAction` (`sendChatAction: typing` co 4s) oraz rotację puli kluczy `GeminiKeyPool` (Failover 0ms przy 429).
+4. Zaimplementowano catch-all route z atomowym zapisem (`workouts.json.tmp` -> `os.replace`) oraz asynchronicznym wywołaniem parsera ETL SQLite w tle (`background_tasks.add_task(process_data)`).
+5. Utworzono dedykowany zestaw 12 testów jednostkowych i integracyjnych `server/test_server_fastapi.py` (wykonanie: 0.10s, 100% zaliczone) z pełną izolacją od zewnętrznych zapytań LLM za pomocą mocków.
+6. Utworzono runner `server/start_fastapi.vbs` do bezokienkowego uruchamiania serwera w tle przez `pythonw.exe`.
+
+**Uzasadnienie:**
+FastAPI zapewnia natywną asynchroniczność (brak blokowania pętli zdarzeń przy powolnych zapytaniach sieciowych), automatyczną walidację i autogenerowaną dokumentację Swagger UI (`/docs`). Równoległe uruchomienie eliminuje ryzyko awarii aktywnego potoku sportowo-dietetycznego.
+
+## ADR-023: Blue-Green Cutover i Przełączenie Ruchu Produkcyjnego na FastAPI (Port 8000)
+
+**Kontekst:** Po pełnej implementacji i przetestowaniu asynchronicznego serwera FastAPI (Faza 1 Roadmapy, ADR-022), produkcyjny ruch z zegarka Samsung oraz bota Telegram nadal trafiał przez tunel Ngrok na legacy serwer Flask (port 5000). Zgodnie z inżynieryjną zasadą *izolacji zmiennych* (*One Variable at a Time*), przejście do konteneryzacji Docker (Faza 2) lub zmiany tunelu (Faza 3) przed empiryczną walidacją nowego silnika pod realnym obciążeniem niosłoby wysokie ryzyko awarii potoku.
+
+**Decyzja:**
+1. Zastosowano wzorzec **Blue-Green Deployment**: serwer FastAPI na porcie 8000 został wyposażony w zintegrowaną obsługę `pyngrok`, mechanizm `enforce_singleton_and_cleanup` (zwalniający port 8000, legacy port 5000 oraz stare procesy ngrok) oraz dedykowany wątek `start_watchdog` (pilnujący ciągłości tunelu co 60s i rejestracji webhooka Telegrama co 5 min).
+2. Wdrożono zabezpieczenie headless dla środowiska Windows: automatyczne przekierowanie `sys.stdout` i `sys.stderr` do strumienia null (`os.devnull`) w przypadku ich braku (`None`), co gwarantuje 100% stabilności procesów `pythonw.exe` i runnera Uvicorn w tle.
+3. Dokonano produkcyjnego przełączenia tunelu (`https://[tunnel-id].ngrok-free.dev` ➔ `http://localhost:8000`) i zweryfikowano poprawność rejestracji webhooka Telegram API (`/telegram-webhook`).
+4. Zaktualizowano skrypt `server/start_serwera.vbs` w Autostarcie Windows, aby domyślnie podnosił `server_fastapi.py`.
+5. Przeprowadzono pomyślną walidację na żywo przez publiczny tunel HTTPS:
+   - Publiczny healthcheck: `GET /` ➔ `{"status": "ok", "server": "FastAPI", "version": "2.0.0"}`
+   - Zaawansowany stan SRE: `GET /health` ➔ `healthy`, baza SQLite podłączona, 3 klucze Gemini aktywne, Faster-Whisper GPU CUDA załadowany
+   - Telemetria smartwatcha: `POST /` (catch-all) ➔ atomowy zapis do `workouts.json` i asynchroniczny parser ETL
+   - Notatka głosowa: `POST /voice` ➔ dopisanie wpisu do `kalistenika/voice_inbox.md`.
+
+**Uzasadnienie:**
+Przełączenie ruchu definitywnie zamyka Fazę 1 Roadmapy Ewolucji. Nowy stos technologiczny (FastAPI + Pydantic + Uvicorn) przejął 100% ruchu produkcyjnego, zapewniając asynchroniczną przepustowość, walidację typów i samonaprawiający się watchdog SRE, przy zachowaniu natychmiastowego planu awaryjnego (Instant Rollback do Flaska w <5s).
+
+## ADR-024: Wzbogacenie Sanitizera Telegrama o Mapowanie Alertów GitHub i Cytowań GFM
+
+**Kontekst:** W toku unifikacji standardu prezentacji wizualnej (Gestalt & GFM) w powiązanym workspace Kalistenika (ADR-K021), agent generuje ustrukturyzowane bloki alertów Markdown (`> [!NOTE]`, `> [!TIP]`, `> [!WARNING]`). Poprzednia implementacja `format_telegram_message()` w `server.py` oraz `server_fastapi.py` nie rozpoznawała tych znaczników, powodując ich uciekanie do postaci `&gt; [!NOTE]` w HTML Telegrama.
+
+**Decyzja:**
+1. Wzbogacono funkcje `format_telegram_message()` oraz `clean_plain_text()` w `server.py` i `server_fastapi.py` o automatyczną translację GitHub alerts na czytelne emotikony (💡, 🎯, ⚠️) oraz usuwanie wiodących znaczników cytowania `>`.
+2. Rozszerzono suite testów jednostkowych o `test_telegram_format_handles_github_alerts` w `test_server.py` i `test_server_fastapi.py` (21/21 testów OK).
+
+**Uzasadnienie:**
+Utrzymuje architekturę separacji adaptera — model AI w rdzeniu emituje standardowy, bogaty GitHub Flavored Markdown zgodny z zasadami Gestalt, a warstwa backendu w Project Coach bezstratnie redukuje go do ograniczeń komunikatora mobilnego.
+
+
+
+
+
+
+
 
 

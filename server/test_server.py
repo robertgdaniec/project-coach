@@ -69,6 +69,44 @@ class TestServer(unittest.TestCase):
         finally:
             conn.close()
 
+    def test_etl_defensive_calories_mapping(self):
+        # 1. Payload tylko z total_calories (obecny błąd Samsunga) -> powinien trafić do bazy
+        payload_samsung = {
+            "total_calories": [{"start_time": "2026-09-16T08:00:00Z", "calories": 180.5}]
+        }
+        res1 = self.app.post('/', json=payload_samsung)
+        self.assertEqual(res1.status_code, 200)
+
+        import sqlite3
+        import etl_parser
+        conn = sqlite3.connect(etl_parser.DB_FILE)
+        try:
+            c = conn.cursor()
+            c.execute("SELECT spalone_kalorie FROM metryki_dzienne WHERE data='2026-09-16'")
+            row = c.fetchone()
+            self.assertIsNotNone(row)
+            self.assertAlmostEqual(row[0], 180.5, places=1)
+        finally:
+            conn.close()
+
+        # 2. Payload z obydwoma polami (active_calories ma pierwszeństwo)
+        payload_future = {
+            "active_calories": [{"start_time": "2026-09-16T12:00:00Z", "calories": 350.0}],
+            "total_calories": [{"start_time": "2026-09-16T12:00:00Z", "calories": 180.5}]
+        }
+        res2 = self.app.post('/', json=payload_future)
+        self.assertEqual(res2.status_code, 200)
+
+        conn = sqlite3.connect(etl_parser.DB_FILE)
+        try:
+            c = conn.cursor()
+            c.execute("SELECT spalone_kalorie FROM metryki_dzienne WHERE data='2026-09-16'")
+            row = c.fetchone()
+            self.assertIsNotNone(row)
+            self.assertAlmostEqual(row[0], 350.0, places=1)
+        finally:
+            conn.close()
+
     def test_telegram_format_strips_file_links(self):
         raw = "Dziś masz REST DAY (patrz: [PROJECT_STATE.md](file:///c:/Users/TESTUSER/PROJECT_STATE.md)), a bilans..."
         formatted = server.format_telegram_message(raw)
@@ -101,6 +139,17 @@ class TestServer(unittest.TestCase):
         self.assertNotIn("confirm_run_command", formatted)
         self.assertNotIn("denied by pre-tool hook", formatted)
         self.assertIn("Zaktualizowano dzisiejsze śniadanie w dzienniku", formatted)
+
+    def test_telegram_format_handles_github_alerts(self):
+        raw = """> [!NOTE]
+> ### 🎯 Odprawa D24 | TRAINING DAY
+> **Waga:** 82.5 kg"""
+        formatted = server.format_telegram_message(raw)
+        self.assertNotIn("[!NOTE]", formatted)
+        self.assertNotIn("&gt;", formatted)
+        self.assertIn("💡", formatted)
+        self.assertIn("<b>🎯 Odprawa D24 | TRAINING DAY</b>", formatted)
+        self.assertIn("<b>Waga:</b> 82.5 kg", formatted)
 
 if __name__ == '__main__':
     unittest.main()
