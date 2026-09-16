@@ -3,37 +3,67 @@
 ## 1. Diagram Przepływu Danych (Data Flow Diagram)
 
 ```mermaid
-graph TD
-    SW["Samsung Watch / Smartfon"] -->|Telemetria HTTP POST| Ngrok["Ngrok HTTPS Tunnel"]
-    SW -->|Audio / Czat Telegram| TG["Telegram Bot API"]
-    TG -->|Webhook HTTP POST| Ngrok
-    
-    Ngrok -->|Przekierowanie :8000| FastAPI["FastAPI + Uvicorn (Docker Container :8000)"]
-    
-    FastAPI -->|endpoint /voice| VI["voice_inbox.md"]
-    FastAPI -->|endpoint /* (catch-all)| WJ["workouts.json (Data Lake)"]
-    FastAPI -->|endpoint /telegram-webhook| DEDUP["TelegramDeduplicator (Auto-Purge)"]
-    FastAPI -.->|OpenAPI Docs| SWAG["Swagger UI (/docs)"]
-    
-    DEDUP -->|Unikalne audio| WSP["Lokalny Faster-Whisper (NVIDIA CUDA large-v3)"]
-    DEDUP -.->|Duplikat z Wear OS| DEL["Telegram API deleteMessage"]
-    
-    WSP -->|Transkrybowany tekst| GKP["GeminiKeyPool (Pula 3 kluczy API)"]
-    GKP -->|0ms Failover Router| OMNI["Omni-Agent (project_coach.md)"]
-    
-    WJ -->|Asynchroniczny background_tasks| ETL["etl_parser.py"]
-    ETL -->|Zapis danych ustrukturyzowanych| DB[("baza_kalistenika.db (SQLite WAL)")]
-    
-    subgraph "Projekt Kalistenika (Host Bind Mount)"
-        VI
-        DB
-        OMNI
-        NL["nutrition_log.md"]
+flowchart TB
+    classDef client fill:#161b22,stroke:#38bdf8,stroke-width:1.5px,color:#f0f6fc;
+    classDef edge fill:#161b22,stroke:#38bdf8,stroke-width:1.5px,color:#f0f6fc;
+    classDef server fill:#161b22,stroke:#8b949e,stroke-width:1.5px,color:#f0f6fc;
+    classDef ai fill:#1a1424,stroke:#c084fc,stroke-width:1.5px,color:#f0f6fc;
+    classDef data fill:#101c18,stroke:#34d399,stroke-width:1.5px,color:#f0f6fc;
+    classDef action fill:#21262d,stroke:#8b949e,stroke-width:1px,color:#c9d1d9;
+
+    subgraph Clients["📱 Urządzenia & Interfejsy Mobilne"]
+        direction LR
+        WATCH["⌚ Galaxy Watch\n(Sensory PPG & Ruchu)"]:::client
+        AUDIO["🎙️ Notatka Głosowa\n(Hands-Free OGG/Opus)"]:::client
+        TG["💬 Czat Telegram\n(Komunikator Mobilny)"]:::client
     end
+
+    subgraph Ingestion["🌐 Warstwa Sieciowa & Brama TLS"]
+        HC["🔗 Health Connect API\n(Pasywny Sync BLE)"]:::client
+        NGROK["🚇 Ngrok HTTPS Tunnel\n(:8000 Webhook Gateway)"]:::edge
+    end
+
+    subgraph Container["🐳 Kontener Docker (FastAPI Engine :8000)"]
+        direction TB
+        FASTAPI["🚀 FastAPI + Uvicorn Runner\n(Pydantic v2 Walidacja Schematów)"]:::server
+        SWAG["📖 Swagger UI\n(/docs OpenAPI 3.1)"]:::server
+        DEDUP["🔁 TelegramDeduplicator\n(Idempotencja & Auto-Purge)"]:::server
+        WHISPER["🧠 Faster-Whisper AI\n(Akceleracja NVIDIA CUDA large-v3)"]:::ai
+        POOL["🗝️ GeminiKeyPool\n(0ms Failover Router - 3 Klucze)"]:::ai
+    end
+
+    subgraph Storage["🗄️ Wolumen Danych Hosta (Host Bind Mount)"]
+        direction TB
+        WJ["📦 workouts.json\n(Surowy Data Lake)"]:::data
+        VI["📝 voice_inbox.md\n(Bufor Notatek Głosowych)"]:::data
+        ETL["🔄 Parser ETL & Sanity Guard\n(Filtracja Anomalii)"]:::data
+        DB[("💾 coach_data.db\n(SQLite WAL Mode)")]:::data
+        AGENT["🦾 Omni-Agent Trener & Dietetyk\n(Kontekst UUID5 & SQL Engine)"]:::ai
+    end
+
+    WATCH --> HC
+    AUDIO --> TG
+    HC -->|Automatyczny POST JSON| NGROK
+    TG -->|Webhook POST Update| NGROK
     
-    OMNI -->|Zapis/Odczyt| NL
-    OMNI -->|Zapis/Odczyt| DB
-    OMNI -->|Odpowiedź czatu| TG
+    NGROK -->|Ruch przychodzący :8000| FASTAPI
+    FASTAPI -.->|Interaktywna dokumentacja| SWAG
+    FASTAPI -->|Obsługa czatu & audio| DEDUP
+    FASTAPI -->|Telemetria smartwatcha| WJ
+    FASTAPI -->|Notatka tekstowa| VI
+    
+    DEDUP -->|Unikalne audio| WHISPER
+    DEDUP -.->|Zdublowany dymek z Wear OS| DEL["🗑️ Telegram API deleteMessage"]:::action
+    
+    WHISPER -->|Zdekodowany tekst| POOL
+    POOL -->|Wnioskowanie LLM| AGENT
+    
+    WJ -->|Asynchroniczny trigger| ETL
+    ETL -->|Zapis i walidacja ACID| DB
+    
+    DB -->|Historyczny kontekst 7-dniowy| AGENT
+    AGENT -->|Sformatowana karta HTML| TG
+    TG -.->|Pętla zwrotna na nadgarstek| WATCH
 ```
 
 ## 2. Schemat Bazy Danych
@@ -94,10 +124,10 @@ graph LR
         DC["docker-compose.yml (Profile CPU/GPU)"]
     end
     
-    subgraph "kalistenika (Host Bind Mount /kalistenika)"
+    subgraph "Host Data Volume (Bind Mount /data)"
         VI["voice_inbox.md"]
         WJ["workouts.json"]
-        DB[("baza_kalistenika.db (WAL)")]
+        DB[("coach_data.db (WAL)")]
         Log["server_log.txt"]
         R_Diet["Reguła Dietetyk"]
         R_Tren["Reguła Trener"]
