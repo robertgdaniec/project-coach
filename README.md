@@ -105,7 +105,7 @@ Full integration with Telegram enables completely mobile, hands-free operation. 
 <div align="center">
   <img src="showcase/telegram_bot.jpg" width="360" alt="Telegram Bot Interface" />
 </div>
-<p align="center"><i>Fact-based response: the agent queries SQLite in sub-second time (verifying 2,021 kcal, 83.1 kg weigh-in, and REST DAY status) to produce a deterministic recommendation without hallucinations.</i></p>
+<p align="center"><i>Fact-based response: the agent transcribes a 17-second voice note, compares ingredients against yesterday's log, and updates the daily macro budget for the upcoming session (TRAINING DAY — PULL) in real time.</i></p>
 
 ---
 

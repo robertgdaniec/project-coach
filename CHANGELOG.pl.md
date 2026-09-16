@@ -1,4 +1,4 @@
-﻿# 📋 Rejestr Zmian (CHANGELOG)
+# 📋 Rejestr Zmian (CHANGELOG)
 
 Wszystkie istotne zmiany i etapy ewolucji architektonicznej projektu **Project Coach** są dokumentowane w tym pliku.
 
@@ -10,7 +10,7 @@ Format oparty jest o [Keep a Changelog](https://keepachangelog.com/pl/1.0.0/), a
 ### Dodano
 - **Dedykowany formater wiadomości mobilnych (Mobile UX Redesign):** Opracowano mechanizm prezentacji odpowiedzi zoptymalizowany pod wąskie ekrany smartfonów i zegarków w aplikacji Telegram.
 - **Kompaktowe karty bilansu dobowego:** Wprowadzono czytelne punktory dla kluczowych parametrów (Zjedzone, Podaż białka, Stan dnia), eliminujące konieczność przewijania.
-- **Kontekstowa pętla decyzyjna:** Agent w analizie na żywo uwzględnia bieżący stan mikrocyklu (D23 — REST DAY), fizjologię snu głębokiego (NREM), obciążenie trawienne w nocy oraz plan jednostki treningowej na kolejny dzień.
+- **Kontekstowa pętla decyzyjna:** Agent w analizie na żywo uwzględnia bieżący plan jednostki treningowej (TRAINING DAY — PULL), pamięć posiłków z poprzednich dni oraz natychmiastowe bilansowanie makroskładników z notatki głosowej.
 
 ### Zmieniono
 - **Eliminacja surowego formatu Markdown (GFM):** Zastąpiono tabele z separatorami | (które w Telegramie renderowały się jako nieczytelny blok tekstu) przejrzystym układem pionowym.

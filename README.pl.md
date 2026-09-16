@@ -105,7 +105,7 @@ Integracja z aplikacją Telegram zapewnia w pełni mobilną obsługę. Użytkown
 <div align="center">
   <img src="showcase/telegram_bot.jpg" width="360" alt="Telegram Bot Interface" />
 </div>
-<p align="center"><i>Odpowiedź oparta na faktach: agent w ułamku sekundy wykonuje zapytanie SQL do bazy SQLite (weryfikuje 2021 kcal, wagę 83.1 kg z poranka i status REST DAY), generując decyzję bez halucynacji.</i></p>
+<p align="center"><i>Odpowiedź oparta na faktach: agent przetwarza 17-sekundową notatkę głosową, porównuje składniki z wczorajszym wpisem i na bieżąco aktualizuje bilans makro pod zaplanowaną jednostkę (TRAINING DAY — PULL).</i></p>
 
 ---
 

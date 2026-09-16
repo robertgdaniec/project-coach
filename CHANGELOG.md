@@ -1,4 +1,4 @@
-﻿# 📋 Changelog
+# 📋 Changelog
 
 All notable architectural decisions and evolutionary milestones of **Project Coach** are documented in this file.
 
@@ -10,7 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### Added
 - **Dedicated Telegram Message Formatter (Mobile UX Redesign):** Built a mobile-native presentation layer optimized for narrow smartphone screens and smartwatches.
 - **Compact Daily Nutrition Cards:** Clean bullet points for essential daily totals (Eaten, Protein intake, Daily status), eliminating cluttered vertical text blocks.
-- **Contextual Real-Time Decision Loop:** The agent evaluates live queries by correlating recovery status (D23 — REST DAY), deep sleep physiology (NREM), nighttime digestive load, and upcoming workout nutrition targets.
+- **Contextual Real-Time Decision Loop:** The agent evaluates live voice queries by correlating workout scheduling (TRAINING DAY — PULL), multi-day meal memory, and real-time macronutrient balancing.
 
 ### Changed
 - **Elimination of Raw Markdown (GFM):** Replaced broken pipe tables (|) with clean, vertical cards that render natively in Telegram.
