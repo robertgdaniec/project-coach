@@ -35,14 +35,15 @@ Zamiast szukania produktów w tabelach i ręcznego notowania ćwiczeń, wystarcz
 Smartwatch zintegrowany z Health Connect automatycznie przesyła dane na domowy serwer: kroki, tętno, spalone kalorie czy czas treningu. Wszystko trafia bezpośrednio do bazy SQLite:
 
 ```log
-[2026-09-14 12:08:17] === START SERWERA ===
-[2026-09-14 12:08:17] Ngrok tunel aktywny: "https://[tunnel-id].ngrok-free.dev" -> "http://localhost:5000"
-[2026-09-14 22:31:21] POST /webhook
-[2026-09-14 22:31:21] Surowy JSON zapisany na dysku.
-[2026-09-14 22:31:21] Parser ETL ukonczyl prace. Baza SQLite zaktualizowana.
-[2026-09-14 22:33:43] Odebrano notatke glosowa: "120 g banana garść orzechów włoskich i pół takiej niewielkiej figi bo była nadpsuta"
-[2026-09-14 23:49:27] POST /webhook
-[2026-09-14 23:49:27] Parser ETL ukonczyl prace. Baza SQLite zaktualizowana.
+INFO:     Uruchomiono silnik serwera [Uvicorn ASGI Engine]
+INFO:     Oczekiwanie na start aplikacji.
+INFO:     Aplikacja uruchomiona. Uvicorn nasluchuje na http://0.0.0.0:8000
+INFO:     Ngrok tunel aktywny: "https://[tunnel-id].ngrok-free.dev" -> "http://localhost:8000"
+INFO:     127.0.0.1:52134 - "POST / HTTP/1.1" 200 OK (Zapisano surowy JSON do Data Lake, wywolano ETL)
+INFO:     Parser ETL: Zsynchronizowano 1 trening, zaktualizowano metryki dzienne. SQLite WAL commit OK.
+INFO:     127.0.0.1:52140 - "POST /telegram-webhook HTTP/1.1" 200 OK (Notatka glosowa zdekodowana przez CUDA large-v3 w 1.42s)
+INFO:     127.0.0.1:52145 - "POST / HTTP/1.1" 200 OK (Zapisano surowy JSON do Data Lake, wywolano ETL)
+INFO:     Parser ETL: Baza SQLite pomyslnie zaktualizowana.
 ```
 
 ```json

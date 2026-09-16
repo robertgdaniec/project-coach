@@ -35,14 +35,15 @@ No need to search food databases or manually log exercise sets. Just dictate wha
 A smartwatch connected to Health Connect automatically pushes telemetry to a local home server: daily steps, heart rate zones, calories burned, or workout duration. Everything lands directly into an SQLite database:
 
 ```log
-[2026-09-14 12:08:17] === SERVER START ===
-[2026-09-14 12:08:17] Active Ngrok tunnel: "https://[tunnel-id].ngrok-free.dev" -> "http://localhost:5000"
-[2026-09-14 22:31:21] POST /webhook
-[2026-09-14 22:31:21] Raw JSON written to disk.
-[2026-09-14 22:31:21] ETL parser finished. SQLite database updated.
-[2026-09-14 22:33:43] Voice note received: "120g banana, a handful of walnuts, and half a fig"
-[2026-09-14 23:49:27] POST /webhook
-[2026-09-14 23:49:27] ETL parser finished. SQLite database updated.
+INFO:     Started server process [Uvicorn ASGI Engine]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete. Uvicorn running on http://0.0.0.0:8000
+INFO:     Active Ngrok tunnel: "https://[tunnel-id].ngrok-free.dev" -> "http://localhost:8000"
+INFO:     127.0.0.1:52134 - "POST / HTTP/1.1" 200 OK (Raw JSON written to Data Lake, ETL triggered)
+INFO:     ETL Parser: 1 workout synced, 1 daily metric updated. SQLite WAL commit OK.
+INFO:     127.0.0.1:52140 - "POST /telegram-webhook HTTP/1.1" 200 OK (Voice note transcribed via CUDA large-v3 in 1.42s)
+INFO:     127.0.0.1:52145 - "POST / HTTP/1.1" 200 OK (Raw JSON written to Data Lake, ETL triggered)
+INFO:     ETL Parser: SQLite database updated.
 ```
 
 ```json
