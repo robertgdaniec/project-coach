@@ -6,6 +6,20 @@ Format oparty jest o [Keep a Changelog](https://keepachangelog.com/pl/1.0.0/), a
 
 ---
 
+## [2.2.0] - 2026-09-16
+### Dodano
+- **Wątek samonaprawczy SRE Watchdog (ADR-019):** Monitorujący wątek w tle sprawdzający aktywność tunelu Ngrok co 60s (automatyczny auto-heal przy zerwaniu połączenia Wi-Fi) oraz audytujący stan webhooka Telegrama (`getWebhookInfo`) co 5 minut w celu uwalniania zatorów kolejki.
+- **Wskaźnik UX "Project Coach pisze..." (`sendChatAction: typing`):** Wdrożenie klasy `TelegramTypingAction` gwarantującej natychmiastowy i ciągły feedback wizualny w aplikacji Telegram podczas transkrypcji mowy Whisper na GPU oraz wnioskowania agenta.
+- **Pełna autonomia agenta (`policy.allow_all`):** Autoryzacja wywołań narzędziowych dla bezgłowego agenta w `LocalAgentConfig`, eliminująca blokady hooka `confirm_run_command`.
+- **Inżynierski schemat architektury w PNG (Retina 2x — ADR-018):** Wygenerowanie i wdrożenie dwutorowych schematów architektury systemu w języku polskim i angielskim (`architecture.png`, `architecture.pl.png`), zastępujących zawodny silnik Mermaid na GitHubie.
+
+### Naprawiono
+- **Sanityzacja wycieków odmowy narzędzi (Pre-Tool Denial Leak):** Wdrożenie defensywnego filtra regex w `format_telegram_message` wycinającego techniczne komunikaty odmowy harnessu (`Denied by policy "confirm_run_command"`) przed wysyłką do czatu.
+- **Hermetyzacja cyklu życia i izolacja procesów (ADR-017):** Przeniesienie `atexit(cleanup_ngrok)` wyłącznie do `__main__` i leniwa inicjalizacja Whispera (`init_whisper()`), dzięki czemu testy jednostkowe wykonują się w 0.04s bez obciążania GPU i bez ubijania tunelu produkcyjnego.
+- **Sanityzacja danych w mediach showcase:** Podmiana zrzutu ekranu w punkcie 7 na w 100% czysty plik (`showcase/telegram_bot.jpg`) eliminujący widoczne w tle ścieżki Windowsa.
+
+---
+
 ## [2.1.0] - 2026-09-15
 ### Dodano
 - **Dedykowany formater wiadomości mobilnych (Mobile UX Redesign):** Opracowano mechanizm prezentacji odpowiedzi zoptymalizowany pod wąskie ekrany smartfonów i zegarków w aplikacji Telegram.

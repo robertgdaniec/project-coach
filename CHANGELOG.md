@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
+## [2.2.0] - 2026-09-16
+### Added
+- **SRE Self-Healing Watchdog (ADR-019):** Background monitoring thread auto-recovering the Ngrok tunnel every 60s upon network drops, and auditing Telegram webhook health (`getWebhookInfo`) every 5 minutes to flush stalled queues.
+- **Real-Time UX Typing Feedback (`sendChatAction: typing`):** Implemented `TelegramTypingAction` providing immediate, continuous visual feedback ("Project Coach is typing...") during speech-to-text transcription and agent reasoning.
+- **Autonomous Execution Policy (`policy.allow_all`):** Granted full autonomous tool execution privileges to headless agents in `LocalAgentConfig`, preventing `confirm_run_command` policy rejections.
+- **Two-Track Architecture Diagrams (Retina 2x PNG — ADR-018):** Rendered pixel-perfect architecture diagrams in Polish and English (`architecture.png`, `architecture.pl.png`) replacing flaky GitHub Mermaid rendering.
+
+### Fixed
+- **Pre-Tool Denial Leak Sanitization:** Added regex filtering in `format_telegram_message` to strip any harness policy denial strings (`Denied by policy "confirm_run_command"`) before messages leave the server.
+- **Hermetic Lifecycle & Process Isolation (ADR-017):** Scoped `atexit(cleanup_ngrok)` exclusively to `__main__` and made Whisper GPU loading lazy (`init_whisper()`), allowing unit test suites to run in 0.04s without killing production tunnels or allocating GPU VRAM.
+- **Showcase Data Sanitization:** Replaced old mobile interface screenshot with a 100% sanitized, high-resolution visual (`showcase/telegram_bot.jpg`) eliminating local path leaks.
+
+---
+
 ## [2.1.0] - 2026-09-15
 ### Added
 - **Dedicated Telegram Message Formatter (Mobile UX Redesign):** Built a mobile-native presentation layer optimized for narrow smartphone screens and smartwatches.
