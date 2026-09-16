@@ -94,5 +94,13 @@ class TestServer(unittest.TestCase):
         self.assertIn("&gt;", formatted)
         self.assertIn("&amp;", formatted)
 
+    def test_telegram_format_strips_policy_denial(self):
+        raw = 'Denied by policy "confirm_run_command". ("denied by pre-tool hook: Denied by policy \\"confirm_run_command\\".")Zaktualizowano dzisiejsze śniadanie w dzienniku'
+        formatted = server.format_telegram_message(raw)
+        self.assertNotIn("Denied by policy", formatted)
+        self.assertNotIn("confirm_run_command", formatted)
+        self.assertNotIn("denied by pre-tool hook", formatted)
+        self.assertIn("Zaktualizowano dzisiejsze śniadanie w dzienniku", formatted)
+
 if __name__ == '__main__':
     unittest.main()

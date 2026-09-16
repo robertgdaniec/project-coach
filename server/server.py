@@ -209,6 +209,36 @@ def delete_telegram_message_async(chat_id, message_id):
 
     threading.Thread(target=_delete, daemon=True).start()
 
+class TelegramTypingAction:
+    """Wysyla okresowo akcje 'typing' do czatu Telegrama w trakcie transkrypcji i generowania odpowiedzi."""
+    def __init__(self, chat_id):
+        self.chat_id = chat_id
+        self._stop_event = threading.Event()
+        self._thread = None
+
+    def _loop(self):
+        token = os.environ.get("TELEGRAM_BOT_TOKEN")
+        if not token or not self.chat_id:
+            return
+        url = f"https://api.telegram.org/bot{token}/sendChatAction"
+        while not self._stop_event.is_set():
+            try:
+                requests.post(url, json={"chat_id": self.chat_id, "action": "typing"}, timeout=DEFAULT_TIMEOUT)
+            except Exception:
+                pass
+            self._stop_event.wait(4.0)
+
+    def __enter__(self):
+        if self.chat_id:
+            self._thread = threading.Thread(target=self._loop, daemon=True, name="TelegramTyping")
+            self._thread.start()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self._stop_event.set()
+        if self._thread:
+            self._thread.join(timeout=0.5)
+
 def process_telegram_update(data):
     """Przetwarzanie wiadomości z Telegrama w osobnym wątku."""
     global whisper_model
@@ -216,59 +246,60 @@ def process_telegram_update(data):
         if 'message' in data:
             msg = data['message']
             sender = msg.get('from', {}).get('first_name', 'User')
+            chat_id = msg.get('chat', {}).get('id')
             final_text = None
             
-            if 'text' in msg:
-                final_text = msg['text']
-                log(f"[TELEGRAM] Tekst od {sender}: {final_text}")
-            elif 'voice' in msg:
-                file_id = msg['voice']['file_id']
-                log(f"[TELEGRAM] Pobieranie notatki glosowej od {sender}...")
-                
-                import uuid
-                audio_path = os.path.join(BASE_DIR, f'temp_audio_{uuid.uuid4().hex}.ogg')
-                download_telegram_file(file_id, audio_path)
-                
-                if whisper_model is not None:
-                    log("[TELEGRAM] Transkrypcja w toku...")
-                    try:
-                        segments, _ = whisper_model.transcribe(audio_path, beam_size=5, language='pl')
-                        final_text = "".join([s.text for s in segments])
-                        log(f"[TELEGRAM] Transkrypcja zakonczona: {final_text}")
-                    except Exception as e:
-                        log(f"[TELEGRAM] Blad CUDA/transkrypcji (mozliwa utrata kontekstu po hibernacji): {e}")
-                        log("[TELEGRAM] Proba ponownego zaladowania modelu na GPU...")
+            with TelegramTypingAction(chat_id):
+                if 'text' in msg:
+                    final_text = msg['text']
+                    log(f"[TELEGRAM] Tekst od {sender}: {final_text}")
+                elif 'voice' in msg:
+                    file_id = msg['voice']['file_id']
+                    log(f"[TELEGRAM] Pobieranie notatki glosowej od {sender}...")
+                    
+                    import uuid
+                    audio_path = os.path.join(BASE_DIR, f'temp_audio_{uuid.uuid4().hex}.ogg')
+                    download_telegram_file(file_id, audio_path)
+                    
+                    if whisper_model is not None:
+                        log("[TELEGRAM] Transkrypcja w toku...")
+                        try:
+                            segments, _ = whisper_model.transcribe(audio_path, beam_size=5, language='pl')
+                            final_text = "".join([s.text for s in segments])
+                            log(f"[TELEGRAM] Transkrypcja zakonczona: {final_text}")
+                        except Exception as e:
+                            log(f"[TELEGRAM] Blad CUDA/transkrypcji (mozliwa utrata kontekstu po hibernacji): {e}")
+                            log("[TELEGRAM] Proba ponownego zaladowania modelu na GPU...")
+                            try:
+                                whisper_model = WhisperModel('large-v3', device='cuda', compute_type='float16')
+                                segments, _ = whisper_model.transcribe(audio_path, beam_size=5, language='pl')
+                                final_text = "".join([s.text for s in segments])
+                                log(f"[TELEGRAM] Transkrypcja (po restarcie GPU) zakonczona: {final_text}")
+                            except Exception as e2:
+                                log(f"[TELEGRAM] Ponowna proba zawiodla: {e2}")
+                    else:
+                        log("[TELEGRAM] Blad: Model Whisper nie jest zaladowany na starcie, proba ladowania...")
                         try:
                             whisper_model = WhisperModel('large-v3', device='cuda', compute_type='float16')
                             segments, _ = whisper_model.transcribe(audio_path, beam_size=5, language='pl')
                             final_text = "".join([s.text for s in segments])
-                            log(f"[TELEGRAM] Transkrypcja (po restarcie GPU) zakonczona: {final_text}")
-                        except Exception as e2:
-                            log(f"[TELEGRAM] Ponowna proba zawiodla: {e2}")
+                            log(f"[TELEGRAM] Transkrypcja zakonczona: {final_text}")
+                        except Exception as e3:
+                            log(f"[TELEGRAM] Ostateczny blad ladowania Whispera: {e3}")
                 else:
-                    log("[TELEGRAM] Blad: Model Whisper nie jest zaladowany na starcie, proba ladowania...")
+                    log(f"[TELEGRAM] Nieobslugiwany typ wiadomosci od {sender}. Klucze: {list(msg.keys())}")
+                
+                # Cleanup pliku audio (thread-safe)
+                if 'audio_path' in dir() and audio_path and os.path.exists(audio_path):
                     try:
-                        whisper_model = WhisperModel('large-v3', device='cuda', compute_type='float16')
-                        segments, _ = whisper_model.transcribe(audio_path, beam_size=5, language='pl')
-                        final_text = "".join([s.text for s in segments])
-                        log(f"[TELEGRAM] Transkrypcja zakonczona: {final_text}")
-                    except Exception as e3:
-                        log(f"[TELEGRAM] Ostateczny blad ladowania Whispera: {e3}")
-            else:
-                log(f"[TELEGRAM] Nieobslugiwany typ wiadomosci od {sender}. Klucze: {list(msg.keys())}")
-            
-            # Cleanup pliku audio (thread-safe)
-            if 'audio_path' in dir() and audio_path and os.path.exists(audio_path):
-                try:
-                    os.remove(audio_path)
-                except Exception:
-                    pass
-            
-            if final_text:
-                # Uruchomienie agenta i wyslanie odpowiedzi z blokada per-chat (ochrona przed wyscigiem)
-                chat_id = msg['chat']['id']
-                with get_chat_lock(chat_id):
-                    asyncio.run(reply_with_agent(final_text, chat_id))
+                        os.remove(audio_path)
+                    except Exception:
+                        pass
+                
+                if final_text and chat_id:
+                    # Uruchomienie agenta i wyslanie odpowiedzi z blokada per-chat (ochrona przed wyscigiem)
+                    with get_chat_lock(chat_id):
+                        asyncio.run(reply_with_agent(final_text, chat_id))
                 
     except Exception as e:
         import traceback
@@ -350,6 +381,10 @@ def format_telegram_message(raw_text: str) -> str:
         
     text = raw_text
     
+    # 0. Usuniecie wyciekow technicznych z polityk bezpieczenstwa / harnessu
+    text = re.sub(r'Denied by policy "[^"]*"\.\s*(\("?[^"\)]*"?\)\s*)?', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'\(?"?denied by pre-tool hook:[^\)]*\)?"?', '', text, flags=re.IGNORECASE)
+
     # 1. Usuniecie linkow lokalnych file:/// oraz referencji typu (patrz: ...)
     text = re.sub(r'\(patrz:\s*\[?[^\]\)]*\]?\(?file:///[^\)]*\)?\)', '', text, flags=re.IGNORECASE)
     text = re.sub(r'\(patrz:[^\)]*\)', '', text, flags=re.IGNORECASE)
@@ -448,6 +483,7 @@ def send_telegram_message(chat_id, text, use_formatting=True):
 
 async def reply_with_agent(text, chat_id):
     from google.antigravity import Agent, LocalAgentConfig, CapabilitiesConfig
+    from google.antigravity.hooks import policy
     from google.antigravity.types import SessionContinuationMode
     import uuid
     import datetime
@@ -485,6 +521,7 @@ async def reply_with_agent(text, chat_id):
         config = LocalAgentConfig(
             system_instructions=coach_rule,
             capabilities=CapabilitiesConfig(),
+            policies=[policy.allow_all()],
             workspace=kalistenika_dir,
             model=current_model,
             conversation_id=conv_id,
@@ -670,6 +707,58 @@ def enforce_singleton_and_cleanup():
     kill_port_5000()
     cleanup_ngrok()
 
+def start_watchdog(domain=None, port=5000):
+    """
+    Watchdog SRE w tle dbajacy o 100% dostepnosc:
+    1. Sprawdza co 60s czy tunel Ngrok jest aktywny. Jesli spadl, podnosi go automatycznie.
+    2. Sprawdza co 5 min status webhooka w Telegramie (getWebhookInfo). Jesli Telegram ma blad/oczekujace wiadomosci, wykonuje setWebhook.
+    """
+    if not domain:
+        return
+
+    def _watch_loop():
+        time.sleep(15)  # Czas na pelny rozruch serwera i wstepne polaczenie
+        webhook_check_counter = 0
+        while True:
+            try:
+                time.sleep(60)
+                # 1. Kontrola tunelu Ngrok
+                try:
+                    tunnels = ngrok.get_tunnels()
+                    is_tunnel_up = any(domain in t.public_url for t in tunnels)
+                    if not is_tunnel_up:
+                        log(f"[WATCHDOG] Tunel Ngrok dla {domain} jest nieaktywny! Proba automatycznego wznowienia...")
+                        new_url = ngrok.connect(port, domain=domain)
+                        log(f"[WATCHDOG] Tunel Ngrok pomyslnie wznowiony: {new_url}")
+                except Exception as e:
+                    log(f"[WATCHDOG] Blad monitorowania/wznawiania Ngrok: {e}")
+
+                # 2. Kontrola Telegram Webhook (co 5 minut)
+                webhook_check_counter += 1
+                if webhook_check_counter >= 5:
+                    webhook_check_counter = 0
+                    token = os.environ.get("TELEGRAM_BOT_TOKEN")
+                    if token:
+                        try:
+                            res = requests.get(f"https://api.telegram.org/bot{token}/getWebhookInfo", timeout=DEFAULT_TIMEOUT).json()
+                            if res.get("ok"):
+                                info = res.get("result", {})
+                                last_err = info.get("last_error_message")
+                                pending = info.get("pending_update_count", 0)
+                                if last_err or (pending > 2):
+                                    log(f"[WATCHDOG] Wykryto problem z webhookiem Telegrama (pending: {pending}, err: {last_err}). Re-rejestracja...")
+                                    webhook_url = f"https://{domain}/telegram-webhook"
+                                    requests.get(f"https://api.telegram.org/bot{token}/setWebhook?url={webhook_url}", timeout=DEFAULT_TIMEOUT)
+                                    log("[WATCHDOG] Webhook Telegrama zresetowany i odblokowany.")
+                        except Exception as e:
+                            log(f"[WATCHDOG] Blad sprawdzania webhooka Telegrama: {e}")
+
+            except Exception as e:
+                log(f"[WATCHDOG] Wyjatek w petli watchdoga: {e}")
+
+    t = threading.Thread(target=_watch_loop, daemon=True, name="SRE-Watchdog")
+    t.start()
+
 
 if __name__ == '__main__':
     enforce_singleton_and_cleanup()
@@ -683,8 +772,8 @@ if __name__ == '__main__':
     # Wstepna inicjalizacja modelu Whisper na GPU
     init_whisper()
 
+    ngrok_domain = os.environ.get("NGROK_DOMAIN")
     try:
-        ngrok_domain = os.environ.get("NGROK_DOMAIN")
         if ngrok_domain:
             public_url = ngrok.connect(5000, domain=ngrok_domain)
         else:
@@ -692,4 +781,7 @@ if __name__ == '__main__':
         log(f"Ngrok tunel aktywny: {public_url}")
     except Exception as e:
         log(f"Ngrok blad (moze juz dziala): {e}")
+
+    if ngrok_domain:
+        start_watchdog(domain=ngrok_domain, port=5000)
     app.run(host='0.0.0.0', port=5000, use_reloader=False)

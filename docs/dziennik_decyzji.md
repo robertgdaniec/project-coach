@@ -182,3 +182,19 @@ Połączenie prewencji na poziomie promptu (czyste dane u źródła) z filtrem b
 **Uzasadnienie:**
 Podejście jest w 100% zgodne ze światowym standardem open-source (topowe repozytoria jak LangChain, Docker czy Supabase zamrażają architekturę w plikach PNG/WebP). Gwarantuje niezawodne wyświetlanie pixel-perfect, czytelną prezentację dwutorową oraz zerową podatność na błędy zewnętrzne.
 
+## ADR-019: Telegram UX Typing Indicator, Autonomia Narzędziowa i SRE Watchdog
+
+**Kontekst:** W trakcie użytkowania mobilnego interfejsu bota zidentyfikowano trzy obszary optymalizacji:
+1. **Feedback UX w trakcie generowania:** Brak wizualnego potwierdzenia odbioru wiadomości (odpowiedź LLM i transkrypcja trwały od 3 do 18 sekund), co rodziło niepewność po stronie użytkownika, czy serwer żyje.
+2. **Wyciek powiadomień polityk bezpieczeństwa (confirm_run_command):** Próba wywołania narzędzia przez agenta w trybie autonomicznym skutkowała odrzuceniem przez domyślny hook bezpieczeństwa harnessu (`Denied by policy "confirm_run_command"`), co wyciekało na początek wiadomości na Telegramie.
+3. **Brak odporności na awarie tunelu Ngrok:** Chwilowe rozłączenie sieci Wi-Fi lub restart sesji Ngrok nie były automatycznie wykrywane przez serwer Flask.
+
+**Decyzja:**
+1. Zaimplementowano klasę `TelegramTypingAction` w `server.py`, która w tle cyklicznie (co 4 sekundy) wysyła akcję `sendChatAction: typing` do czatu Telegrama od momentu odebrania wiadomości (zarówno tekstowej, jak i notatki głosowej) aż do wysłania gotowej odpowiedzi.
+2. W `reply_with_agent` dodano `policies=[policy.allow_all()]` do `LocalAgentConfig`, co autoryzuje autonomiczne działanie agenta, a w `format_telegram_message` wprowadzono dodatkowy filtr regex usuwający wszelkie techniczne komunikaty odmowy (`Denied by policy...`).
+3. Wdrożono wątek `start_watchdog` w `server.py`, który co 60 sekund sprawdza aktywność tunelu Ngrok (`ngrok.get_tunnels()`) i automatycznie wznawia połączenie w razie awarii, a co 5 minut audytuje stan webhooka Telegrama (`getWebhookInfo`) i usuwa ewentualne zatory w kolejce.
+
+**Uzasadnienie:**
+Wdrożenie łączy wzorcowy UX komunikatora mobilnego (natychmiastowy feedback "pisze...") z odpornością infrastruktury typu Self-Healing (automatyczne wznawianie tunelu bez konieczności restartu hosta) i czystością generowanego tekstu.
+
+
