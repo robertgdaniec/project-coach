@@ -137,4 +137,13 @@ W celu eliminacji błędu wielokrotnego wysyłania tych samych notatek głosowyc
 *   **Auto-Purge w UI Telegrama:** Po wykryciu duplikatu serwer natychmiast przerywa przetwarzanie i asynchronicznie wywołuje `deleteMessage` na identyfikatorze drugiej wiadomości. Eliminuje to nadmiarowy dymek na ekranie zegarka/telefonu użytkownika.
 *   **Serializacja Sesji Agenta (`get_chat_lock`):** Zabezpiecza przed współbieżnym odpytywaniem tego samego `conversation_id` przy szybkim nadejściu kilku różnych wiadomości, chroniąc bazę sesji i limit 5 RPM w darmowym tierze Gemini API.
 
+## 9. SRE Watchdog i Wskaźnik UX Telegrama (Self-Healing & Typing Feedback)
+
+*   **Pętla SRE Watchdog (`start_watchdog`):** Dedykowany wątek demoniczny uruchamiany równolegle z serwerem Flask:
+    *   **Monitor Tunelu Ngrok (co 60s):** Weryfikuje listę aktywnych tuneli przez `ngrok.get_tunnels()`. W przypadku zerwania połączenia automatycznie odtwarza tunel pod skonfigurowaną domeną i aktualizuje webhook Telegrama.
+    *   **Audyt i Auto-Flush Webhooka Telegrama (co 5 min):** Odpytuje `getWebhookInfo`. W przypadku zalegających aktualizacji (`pending_update_count > 0`), automatycznie wymusza oczyszczenie kolejki (`drop_pending_updates=True`) i rejestruje incydent w logach.
+*   **Wskaźnik UX Typing (`TelegramTypingAction`):** Wątek tła pulsujący akcją `sendChatAction: typing` co 4 sekundy od momentu wpłynięcia żądania do wysłania odpowiedzi. Zapewnia natychmiastową informację zwrotną dla użytkownika podczas lokalnej transkrypcji Whisper (GPU) oraz wnioskowania modelu LLM.
+*   **Autonomia Narzędziowa & Sanitizer Odmów:** Konfiguracja agenta z polityką `policy.allow_all()` eliminującą fałszywe blokady `confirm_run_command` w trybie bezgłowym oraz filtr regex w `format_telegram_message` wycinający ewentualne komunikaty odmowy harnessu.
+
+
 
