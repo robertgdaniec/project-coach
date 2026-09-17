@@ -113,7 +113,7 @@ def log(msg: str):
     logger.info(msg)
 
 # Inicjalizacja zarządcy puli kluczy API
-default_model = os.environ.get("GEMINI_MODEL", "gemini-3.6-flash")
+default_model = os.environ.get("GEMINI_MODEL", "gemini-3.5-flash")
 key_pool = GeminiKeyPool(model_name=default_model)
 
 # Globalny timeout dla zapytań sieciowych
@@ -614,13 +614,33 @@ async def reply_with_agent(text: str, chat_id: int):
 
     today_str = datetime.date.today().strftime('%Y-%m-%d')
     conv_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, f"telegram-{chat_id}-{today_str}"))
-    current_model = os.environ.get("GEMINI_MODEL", "gemini-3.6-flash")
+    current_model = os.environ.get("GEMINI_MODEL", "gemini-3.5-flash")
+    fallback_model = os.environ.get("GEMINI_FALLBACK_MODEL", "gemini-3.6-flash")
+    REQUEST_TIMEOUT = 35.0
 
     total_slots = len(key_pool.slots)
     if total_slots == 0:
         log("[AGENT] Blad krytyczny: Brak skonfigurowanych kluczy API w GeminiKeyPool!")
         await send_telegram_message(chat_id, "❌ Błąd serwera: Brak aktywnych kluczy API w puli.", use_formatting=False)
         return
+
+    async def _execute_agent_chat(target_model: str, target_key: str) -> str:
+        config = LocalAgentConfig(
+            system_instructions=coach_rule,
+            capabilities=CapabilitiesConfig(),
+            policies=[policy.allow_all()],
+            workspace=kalistenika_dir,
+            model=target_model,
+            conversation_id=conv_id,
+            session_continuation_mode=SessionContinuationMode.CREATE_OR_RESUME,
+            api_key=target_key
+        )
+        async with Agent(config) as agent:
+            response = await agent.chat(text)
+            reply = ""
+            async for token in response:
+                reply += token
+            return reply
 
     attempt = 0
     while attempt < total_slots:
@@ -632,29 +652,29 @@ async def reply_with_agent(text: str, chat_id: int):
 
         log(f"[POOL] Proba wywolania agenta z kluczem {slot.name} (model: {current_model}, proba {attempt + 1}/{total_slots})...")
 
-        config = LocalAgentConfig(
-            system_instructions=coach_rule,
-            capabilities=CapabilitiesConfig(),
-            policies=[policy.allow_all()],
-            workspace=kalistenika_dir,
-            model=current_model,
-            conversation_id=conv_id,
-            session_continuation_mode=SessionContinuationMode.CREATE_OR_RESUME,
-            api_key=slot.key
-        )
-
         try:
-            async with Agent(config) as agent:
-                response = await agent.chat(text)
-                reply_text = ""
-                async for token in response:
-                    reply_text += token
+            # 1. Główna próba z twardym timeoutem 35s
+            reply_text = await asyncio.wait_for(_execute_agent_chat(current_model, slot.key), timeout=REQUEST_TIMEOUT)
+            log(f"[AGENT] Odpowiedz wygenerowana pomyslnie ({len(reply_text)} znakow).")
+            key_pool.mark_slot_success(slot)
+            await send_telegram_message(chat_id, reply_text, use_formatting=True)
+            log("[AGENT] Wiadomosc wyslana na Telegram.")
+            return
 
-                log(f"[AGENT] Odpowiedz wygenerowana pomyslnie ({len(reply_text)} znakow).")
+        except asyncio.TimeoutError:
+            log(f"[AGENT] Timeout ({REQUEST_TIMEOUT}s) na modelu {current_model} (klucz {slot.name}). Uruchamiam Model Fallback do {fallback_model}...")
+            try:
+                reply_text = await asyncio.wait_for(_execute_agent_chat(fallback_model, slot.key), timeout=25.0)
+                log(f"[AGENT] Odpowiedz z modelu zapasowego {fallback_model} wygenerowana pomyslnie ({len(reply_text)} znakow).")
                 key_pool.mark_slot_success(slot)
                 await send_telegram_message(chat_id, reply_text, use_formatting=True)
-                log("[AGENT] Wiadomosc wyslana na Telegram.")
+                log("[AGENT] Wiadomosc wyslana na Telegram (Fallback Model).")
                 return
+            except Exception as fe:
+                log(f"[POOL] Model zapasowy {fallback_model} rowniez nie odpowiedzial: {fe}. Przechodze do nastepnego slotu...")
+                attempt += 1
+                key_pool.rotate_to_next_slot()
+                continue
 
         except Exception as e:
             error_str = str(e)
@@ -669,13 +689,22 @@ async def reply_with_agent(text: str, chat_id: int):
                 log(f"[POOL] Klucz {slot.name} wyczerpany ({limit_type}). Failover...")
                 continue
             elif "503" in error_str or "UNAVAILABLE" in error_str:
-                log("[POOL] Blad 503 (serwery Google chwilowo niedostepne). Pauza 2s i failover...")
-                key_pool.rotate_to_next_slot()
-                attempt += 1
-                await asyncio.sleep(2)
-                continue
+                log(f"[POOL] Blad 503 (przeciazenie klastra Google) na {current_model}. Natychmiastowy Model Fallback do {fallback_model}...")
+                try:
+                    reply_text = await asyncio.wait_for(_execute_agent_chat(fallback_model, slot.key), timeout=25.0)
+                    log(f"[AGENT] Odpowiedz z modelu zapasowego {fallback_model} wygenerowana pomyslnie.")
+                    key_pool.mark_slot_success(slot)
+                    await send_telegram_message(chat_id, reply_text, use_formatting=True)
+                    log("[AGENT] Wiadomosc wyslana na Telegram (Fallback Model).")
+                    return
+                except Exception as fe:
+                    log(f"[POOL] Model zapasowy {fallback_model} rowniez zwrocil blad: {fe}. Failover klucza...")
+                    key_pool.rotate_to_next_slot()
+                    attempt += 1
+                    await asyncio.sleep(2)
+                    continue
             elif "API_KEY_INVALID" in error_str or "403" in error_str:
-                log(f"[POOL] Klucz {slot.name} jest nieprawidlowy! Oznaczam jako wykluczony.")
+                log(f"[POOL] Klucz {slot.name} jest nieprawidlowy! Oznaczam jako wykluczony na 24h.")
                 key_pool.mark_slot_exhausted(slot, cooldown_seconds=86400)
                 attempt += 1
                 continue
@@ -683,13 +712,37 @@ async def reply_with_agent(text: str, chat_id: int):
                 log(f"[AGENT] Blad krytyczny niezwiazany z limitami API: {error_str}")
                 break
 
-    wait_time = key_pool.get_min_wait_time()
-    if wait_time > 0:
-        error_msg = f"⏳ Wszystkie klucze API w puli wyczerpały swoje limity. Najbliższy klucz zwolni się za ok. {wait_time}s. Spróbuj ponownie za chwilę."
-    else:
-        error_msg = "❌ Wystąpił błąd przetwarzania wiadomości przez agenta AI. Spróbuj ponownie za jakiś czas."
+    # 3. Zabezpieczenie Zero Data Loss: Dead-Letter Queue (DLQ)
+    inbox_path = os.path.join(WORKSPACE_DIR, 'voice_inbox.md')
+    timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M')
+    entry = f'[{timestamp}] TELEGRAM (BUFOR AWARYJNY): {text}\n'
+    try:
+        def _write_inbox():
+            with open(inbox_path, 'a', encoding='utf-8') as f:
+                f.write(entry)
+        await asyncio.to_thread(_write_inbox)
+        log("[VOICE] Notatka pomyslnie zabezpieczona w buforze awaryjnym voice_inbox.md.")
+    except Exception as ie:
+        log(f"[VOICE] Blad zapisu do bufora voice_inbox.md: {ie}")
 
-    await send_telegram_message(chat_id, error_msg, use_formatting=False)
+    wait_time = key_pool.get_min_wait_time()
+    escaped_text = html.escape(text[:250]) + ("..." if len(text) > 250 else "")
+    if wait_time > 0:
+        error_msg = (
+            f"⏳ <b>Wszystkie klucze API wyczerpały limity</b> (odblokowanie za ok. {wait_time}s).\n\n"
+            f"🔒 <b>Twoja notatka NIE PRZEPADŁA:</b>\n"
+            f"<i>„{escaped_text}”</i>\n\n"
+            f"Została bezpiecznie zachowana w skrzynce posiłków (<code>voice_inbox.md</code>)."
+        )
+    else:
+        error_msg = (
+            f"⚠️ <b>Chwilowa niedostępność serwerów AI Google (błąd 503).</b>\n\n"
+            f"🔒 <b>Twoja notatka NIE PRZEPADŁA:</b>\n"
+            f"<i>„{escaped_text}”</i>\n\n"
+            f"Została bezpiecznie zachowana w skrzynce posiłków (<code>voice_inbox.md</code>)."
+        )
+
+    await send_telegram_message(chat_id, error_msg, use_formatting=True)
 
 
 async def process_telegram_update_task(data: dict):

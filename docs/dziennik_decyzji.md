@@ -87,6 +87,9 @@ Ten dokument opisuje kluczowe decyzje architektoniczne w projekcie "Project Coac
 **Odrzucone alternatywy:** Tworzenie ciężkiego bufora i bazy SQLite na telefonie, aplikacje pośredniczące z chmurą.
 **Uzasadnienie:** Architektura Store-and-Forward natywnie wykorzystująca zmienna tekstowa (String) MacroDroida zapewnia bezstratny transfer danych przy absolutnym minimum kodu backendowego, zdejmując odpowiedzialność za retencje z serwera Flaska na urządzenie generujące dane.
 
+**Aneks (2026-09-17 - Wygaszenie MacroDroida i Brzytwa Ockhama):**
+Wdrożenie natywnego bota Telegrama z transkrypcją Whisper GPU i dwukierunkowym dialogiem (ADR-010, ADR-014, ADR-016, ADR-022) uczyniło kolejkę notatek MacroDroida zbędną zaszłością. Zgodnie z Brzytwą Ockhama (Reguła 11) MacroDroid został definitywnie wycofany z aktywnej architektury. Interfejs głosowo-tekstowy w 100% obsługuje Telegram Bot API, a dane telemetryczne wyłącznie aplikacja Health Connect Webhooks.
+
 ## ADR-012: Serwerowa kompensacja TDEE (Dynamiczne BMR)
 
 **Kontekst:** Aplikacja Health Connect Webhook eksportuje wyłącznie zsumowane kalorie wysiłkowe (tzw. Active Calories ~918 kcal), ignorując wyliczone w telefonie TDEE (np. 2696 kcal), ponieważ Samsung Health odmawia eksportu wewnętrznego BMR do bazy Google Health Connect.
@@ -296,10 +299,40 @@ Utrzymuje architekturę separacji adaptera — model AI w rdzeniu emituje standa
 **Uzasadnienie:**
 Architektura łączy najwyższy standard hermetyzacji aplikacji (12-Factor App) z elastycznością sprzętową (ten sam kod działa na CPU w chmurze i na GPU RTX lokalnie) oraz chroni integralność bazy SQLite i buforów Data Lake przed uszkodzeniem.
 
+## ADR-026: Bramka Świeżości Telemetrii (Pre-Flight Data Gate) w Potoku Porannym
 
+**Kontekst:**
+W scenariuszu, gdy komputer był wyłączony/uśpiony w nocy, a użytkownik rano podaje masę ciała Trenerowi, aplikacja Health Connect Webhooks na telefonie mogła jeszcze nie zrzucić nocnej telemetrii (kroków z wczoraj, tętna spoczynkowego, snu). Poprzednia implementacja Agenta (`Procedura 1: Zamknięcie Doby`) natychmiast po podaniu wagi zamykała dobę w SQLite, wyliczając zafałszowane TDEE i generując błędny pacing.
 
+**Decyzja:**
+1. Zaimplementowano deterministyczną funkcję weryfikacyjną w CLI `kalistenika/tools/db.py --check-sync`, weryfikującą obecność pełnych kroków/kalorii z wczoraj oraz obecność dzisiejszych odczytów z `workouts.json` / SQLite.
+2. Wdrożono w regule Agenta `project_coach.md` oraz `03_architektura_danych.md` obligatoryjną **Bramkę Świeżości Telemetrii (Pre-Flight Data Gate)**:
+   - W stanie `[SYNC_STATUS: PENDING]`: Agent odnotowuje wagę, ale bezwzględnie wstrzymuje zamknięcie doby, kalkulację TDEE oraz generowanie pacingu na bieżący dzień, informując użytkownika o oczekiwaniu na synchronizację z telefonu.
+   - W stanie `[SYNC_STATUS: OK]`: Agent realizuje pełne zamknięcie doby i generuje odprawę dzienną.
 
+**Uzasadnienie:**
+Eliminuje zjawisko kalkulacji bilansu energetycznego na niepełnych danych bez narzucania użytkownikowi sztywnego harmonogramu. Chroni spójność relacyjną bazy SQLite i precyzję pacingu żywieniowego.
 
+## ADR-027: Odporność na Awarie Zewnętrzne AI (Model Fallback, Twardy Timeout 35s & Dead-Letter Queue)
+
+**Kontekst:**
+W dniu 17.09.2026 wystąpił incydent przeciążenia klastrów Google dla modelu `gemini-3.6-flash` (błąd HTTP 503 UNAVAILABLE / High Demand Spike). Dotychczasowy serwer traktował ten błąd jak wyczerpanie limitu klucza (429), próbując odpytywać ten sam niedostępny model na kolejnych kluczach z puli. Dodatkowo brak twardego timeoutu w wywołaniu `Agent.chat()` spowodował zawieszenie wątku na prawie 9 minut w wewnętrznych pętlach ponowień SDK, po czym nieskuteczne zapytanie odrzuciło notatkę użytkownika do logu bez zapisu w trwałym buforze.
+
+**Decyzja:**
+1. **Rozróżnienie Natury Błędu (Model Fallback vs Key Failover):**
+   - Przy kodzie HTTP 429: zachowano natychmiastową rotację kluczy w puli (`Key Failover`).
+   - Przy kodzie HTTP 503 lub przekroczeniu timeoutu: wdrożono natychmiastowy `Model Fallback` do alternatywnego modelu (`gemini-3.6-flash` jako rezerwy dla wiodącego `gemini-3.5-flash`) na tym samym kluczu, bez marnowania slotów puli.
+2. **Twardy Client-Side Timeout (35s):**
+   - Otoczono wywołanie agenta klauzulą `asyncio.wait_for(..., timeout=35.0)`. Przekroczenie okna czasowego natychmiast wyzwala Model Fallback (timeout 25s) i odcina wiszące połączenie.
+3. **Dead-Letter Queue (Gwarancja Zero Data Loss):**
+   - W przypadku niepowodzenia wszystkich prób agenta, transkrybowana treść notatki z Telegrama jest automatycznie i atomowo dopisywana do `kalistenika/voice_inbox.md`.
+   - Na czacie Telegrama wysyłany jest komunikat awaryjny z dosłownym cytatem zabezpieczonej notatki.
+4. **Migracja Modeli:**
+   - Model główny: `gemini-3.5-flash`.
+   - Model zapasowy: `gemini-3.6-flash`.
+
+**Uzasadnienie:**
+Eliminuje ryzyko utraty danych podyktowanych notatek, likwiduje wielominutowe blokowanie interfejsu oraz chroni limity kluczy API przed bezsensownym odpytywaniem przeciążonych usług zewnętrznych.
 
 
 
