@@ -1,0 +1,30 @@
+# ==============================================================================
+# .dockerignore — Enterprise Inverted Whitelist (Default Deny / Zero Trust)
+# Standard: INV-010 / ADR-062
+# ==============================================================================
+
+# 1. Domyślne wykluczenie wszystkiego (Default Deny)
+**/*
+*
+
+# 2. Wybiórcze dopuszczenie zasobów wymaganych przez Dockerfile
+!requirements*.txt
+!server/
+!server/**
+
+# 3. Obrona w głąb: Rekursywne wykluczenie sekretów, cache i plików tymczasowych z wnętrza server/
+server/**/__pycache__/
+server/**/*.py[cod]
+server/**/.pytest_cache/
+server/**/test_*.py
+server/**/.env*
+server/**/.ENV*
+server/**/*.tmp
+server/**/temp_audio*.ogg
+server/**/test_audio*.ogg
+server/**/*.db*
+server/**/*-wal
+server/**/*-shm
+server/**/*.exe
+server/**/*.bat
+server/**/*.vbs

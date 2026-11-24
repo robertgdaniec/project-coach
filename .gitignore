@@ -1,0 +1,63 @@
+# ==============================================================================
+# .gitignore — Enterprise Inverted Whitelist (Default Deny / Zero Trust)
+# ==============================================================================
+
+# 1. Domyślne wykluczenie wszystkiego (Default Deny)
+*
+**/*
+
+# 2. Wybiórcze dopuszczenie zasobów repozytorium publicznego
+!.gitignore
+!.dockerignore
+!.env.example
+!docker-compose.yml
+!Dockerfile
+!requirements-base.txt
+!requirements-gpu.txt
+!README.md
+!README.pl.md
+!CHANGELOG.md
+!CHANGELOG.pl.md
+
+# GitHub Actions CI
+!.github/
+!.github/**
+
+# Showcase & Grafiki demonstracyjne
+!showcase/
+!showcase/**
+
+# Publiczna dokumentacja
+!docs/
+!docs/architektura.md
+
+# Kod aplikacji i testy
+!server/
+!server/**
+!server/.env.example
+
+# 3. Obrona w głąb (Defense-in-Depth): rekursywna blokada wewnątrz dozwolonych katalogów
+server/**/.env*
+server/**/.ENV*
+!server/**/.env.example
+server/**/__pycache__/
+server/**/*.py[cod]
+server/**/.pytest_cache/
+server/**/*.db*
+server/**/*-wal
+server/**/*-shm
+server/**/*.log
+server/**/*.tmp
+server/**/temp_audio*
+server/**/test_audio*
+server/**/*.ogg
+server/**/*.mp3
+server/**/*.wav
+server/**/*.exe
+server/**/*.bat
+server/**/*.vbs
+server/**/pythonw_err.txt
+server/**/server_*.txt
+server/**/workouts.json
+server/**/voice_inbox.md
+server/**/sync/

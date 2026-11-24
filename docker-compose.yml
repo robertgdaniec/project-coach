@@ -1,0 +1,135 @@
+# ==============================================================================
+# Docker Compose: Project Coach (FastAPI + Redis Queue)
+# Architektura wielousługowa:
+#   - Usługa wspólna: coach-redis (baza kolejki zadań asynchronicznych)
+#   - Profil CPU: docker compose --profile cpu up -d
+#   - Profil GPU: docker compose --profile gpu up -d
+# ==============================================================================
+
+services:
+  # ----------------------------------------------------------------------------
+  # Usługa Kolejki: Redis 7 Alpine (asynchroniczna obsługa zadań webhooków/transkrypcji)
+  # ----------------------------------------------------------------------------
+  coach-redis:
+    container_name: coach-redis
+    image: redis:7-alpine
+    command: redis-server --appendonly yes --maxmemory 128mb --maxmemory-policy noeviction
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - coach-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+
+  # ----------------------------------------------------------------------------
+  # Profil 1: Lekki serwer CPU pod webhooki Telegrama, Samsung Health i API Gemini
+  # ----------------------------------------------------------------------------
+  project-coach-cpu:
+    container_name: project-coach-cpu
+    image: project-coach:cpu-3.13
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runner-cpu
+    profiles:
+      - cpu
+    restart: unless-stopped
+    depends_on:
+      coach-redis:
+        condition: service_healthy
+    networks:
+      - coach-network
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      - FASTAPI_HOST=0.0.0.0
+      - FASTAPI_PORT=8000
+      - KALISTENIKA_DIR=/kalistenika
+      - WHISPER_DEVICE=cpu
+      - REDIS_URL=redis://coach-redis:6379/0
+    ports:
+      - "127.0.0.1:${HOST_FASTAPI_PORT:-8000}:8000"
+    volumes:
+      # Bezpieczny Bind Mount całego katalogu kalistenika:
+      # Zapewnia współdzielenie bazy SQLite w trybie WAL (.db, .db-wal, .db-shm),
+      # surowego Data Lake (workouts.json) oraz bufora voice_inbox.md.
+      - ../kalistenika:/kalistenika
+
+  # ----------------------------------------------------------------------------
+  # Profil 2: Serwer akcelerowany GPU z NVIDIA Container Toolkit (Faster-Whisper CUDA)
+  # ----------------------------------------------------------------------------
+  project-coach-gpu:
+    container_name: project-coach-gpu
+    image: project-coach:gpu-3.13
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runner-gpu
+    profiles:
+      - gpu
+    restart: unless-stopped
+    depends_on:
+      coach-redis:
+        condition: service_healthy
+    networks:
+      - coach-network
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      - FASTAPI_HOST=0.0.0.0
+      - FASTAPI_PORT=8000
+      - KALISTENIKA_DIR=/kalistenika
+      - WHISPER_DEVICE=cuda
+      - REDIS_URL=redis://coach-redis:6379/0
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    ports:
+      - "127.0.0.1:${HOST_FASTAPI_PORT:-8000}:8000"
+    volumes:
+      - ../kalistenika:/kalistenika
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  # ----------------------------------------------------------------------------
+  # Usługa Tunelu: Cloudflare Tunnels (bezpieczny ingress publiczny bez otwartych portów)
+  # ----------------------------------------------------------------------------
+  coach-tunnel:
+    container_name: coach-tunnel
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    profiles:
+      - cpu
+    depends_on:
+      project-coach-cpu:
+        condition: service_healthy
+    networks:
+      - coach-network
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN:-}
+
+networks:
+  coach-network:
+    name: coach-network
+    driver: bridge
+
+volumes:
+  redis-data:
+    name: coach-redis-data
